@@ -180,11 +180,11 @@ export function MapView() {
   };
 
   return (
-    <div className="relative h-full w-full flex">
+    <div className="relative h-full w-full flex overflow-hidden">
       {/* Side list (desktop) */}
       <aside
         className={cn(
-          "hidden md:flex flex-col w-[320px] lg:w-[380px] border-r border-water-100/60 bg-white/80 backdrop-blur-lg",
+          "hidden md:flex flex-col w-[320px] lg:w-[380px] h-full border-r border-water-100/60 bg-white/80 backdrop-blur-lg",
           !showList && "md:hidden",
         )}
       >
@@ -249,8 +249,8 @@ export function MapView() {
       </aside>
 
       {/* Map canvas */}
-      <div className="relative flex-1">
-        <div ref={mapContainer} className="absolute inset-0" />
+      <div className="relative flex-1 h-full">
+        <div ref={mapContainer} className="absolute inset-0" style={{ minHeight: "100%" }} />
 
         {/* Floating actions */}
         <div className="absolute top-3 left-3 right-3 flex items-start gap-2 pointer-events-none">

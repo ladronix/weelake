@@ -59,6 +59,10 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Playwright / screenshot artifacts
+weelake-*.png
+.playwright-mcp/
+
 # IDE
 .idea/
 .vscode/
@@ -75,3 +79,5 @@ Thumbs.db
 
 # Sentry
 .sentryclirc
+.next/
+apps/web/tsconfig.tsbuildinfo

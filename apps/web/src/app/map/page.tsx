@@ -8,11 +8,11 @@ export const metadata = {
 
 export default function MapPage() {
   return (
-    <>
+    <div className="fixed inset-0 flex flex-col">
       <Nav />
-      <main className="fixed inset-0 top-[64px] sm:top-[80px]">
+      <main className="flex-1 relative overflow-hidden">
         <MapView />
       </main>
-    </>
+    </div>
   );
 }
