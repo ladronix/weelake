@@ -1,0 +1,27 @@
+{
+  "name": "weelake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Global lake temperatures — live, beautiful, free.",
+  "packageManager": "pnpm@9.12.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "start": "pnpm --filter web start",
+    "lint": "pnpm --filter web lint",
+    "type-check": "pnpm --filter web type-check",
+    "seed": "pnpm --filter web seed",
+    "db:migrate": "supabase db push",
+    "db:reset": "supabase db reset",
+    "worker:openmeteo": "pnpm --filter openmeteo-refresh start",
+    "worker:copernicus": "python services/copernicus-fetcher/fetch.py"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

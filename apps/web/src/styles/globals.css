@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-inter: "Inter", system-ui, sans-serif;
+    --font-display: "Inter", system-ui, sans-serif;
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface text-deep antialiased;
+    background-image:
+      radial-gradient(at 5% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
+      radial-gradient(at 95% 5%, rgba(14, 165, 233, 0.10) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(3, 105, 161, 0.08) 0px, transparent 50%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .glass {
+    @apply backdrop-blur-xl bg-white/60 border border-white/40 shadow-[0_8px_32px_rgba(14,165,233,0.08)];
+  }
+  .glass-dark {
+    @apply backdrop-blur-xl bg-deep/60 border border-white/10;
+  }
+
+  /* Temperature pill */
+  .temp-pill {
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 font-semibold tabular-nums text-white shadow-sm;
+  }
+
+  /* Water button */
+  .btn-water {
+    @apply inline-flex items-center gap-2 rounded-full bg-water-500 px-5 py-2.5 font-medium text-white transition
+           hover:bg-water-600 active:bg-water-700
+           shadow-[0_4px_16px_rgba(14,165,233,0.35)] hover:shadow-[0_6px_24px_rgba(14,165,233,0.45)];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 rounded-full px-5 py-2.5 font-medium text-water-700 transition
+           hover:bg-water-50;
+  }
+
+  /* Section wrapper */
+  .section {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    @apply relative overflow-hidden bg-water-100/50 rounded-2xl;
+    background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+}
+
+@layer utilities {
+  /* Scrollbar minimal */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Text gradient */
+  .text-water-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #0EA5E9, #0369A1);
+  }
+
+  /* Safe area */
+  .safe-t { padding-top: env(safe-area-inset-top); }
+  .safe-b { padding-bottom: env(safe-area-inset-bottom); }
+}

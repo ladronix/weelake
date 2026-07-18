@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://weelake.com/sitemap.xml

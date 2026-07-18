@@ -1,0 +1,20 @@
+{
+  "name": "V-Lake · Global lake temperatures",
+  "short_name": "V-Lake",
+  "description": "Live water temperatures for lakes worldwide.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F0F9FF",
+  "theme_color": "#0EA5E9",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "categories": ["weather", "travel", "utilities", "sports"],
+  "shortcuts": [
+    { "name": "Open map",     "url": "/map",  "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Find nearest", "url": "/?locate=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

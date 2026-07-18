@@ -1,0 +1,58 @@
+name: Smoke test (production)
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: "Deployed site URL to probe"
+        required: false
+        default: "https://weelake.com"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set target URL
+        id: target
+        run: |
+          URL="${{ github.event.inputs.site_url }}"
+          [ -z "$URL" ] && URL="https://weelake.com"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Probing $URL"
+
+      - name: Landing page returns 200
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.target.outputs.url }}/")
+          echo "GET / → $code"
+          test "$code" = "200"
+
+      - name: /map returns 200
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.target.outputs.url }}/map")
+          echo "GET /map → $code"
+          test "$code" = "200"
+
+      - name: /api/stats returns JSON
+        run: |
+          body=$(curl -s "${{ steps.target.outputs.url }}/api/stats")
+          echo "$body" | head -c 500
+          echo "$body" | jq -e '.total_lakes' > /dev/null
+
+      - name: /api/search returns results for 'lipno'
+        run: |
+          body=$(curl -s "${{ steps.target.outputs.url }}/api/search?q=lipno")
+          echo "$body" | jq -e '.results | length > 0' > /dev/null
+
+      - name: robots.txt served
+        run: |
+          curl -sf "${{ steps.target.outputs.url }}/robots.txt" | grep -q "Sitemap"
+
+      - name: sitemap.xml served
+        run: |
+          curl -sf "${{ steps.target.outputs.url }}/sitemap.xml" | head -c 500
