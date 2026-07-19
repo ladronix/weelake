@@ -20,15 +20,37 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const supabase = createSupabaseServiceClient();
   const { data: lake } = await supabase
     .from("lakes")
-    .select("name, country_code, name_local")
+    .select("name, country_code, name_local, photo_url")
     .eq("slug", slug)
     .maybeSingle();
 
   if (!lake) return { title: "Lake" };
+  const path = `/lake/${slug}`;
+  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   return {
     title: `${lake.name} water temperature`,
-    description: `Live water temperature and 7-day history for ${lake.name} (${lake.country_code}). Weather forecast and swim-safety verdict.`,
-    alternates: { canonical: `/lake/${slug}` },
+    description: `Live water temperature and 15-day history for ${lake.name} (${lake.country_code}). Weather forecast, swim-safety verdict, and photos.`,
+    alternates: {
+      canonical: path,
+      languages: {
+        "en-US": path,
+        "cs-CZ": path,
+        "de-DE": path,
+        "x-default": path,
+      },
+    },
+    openGraph: {
+      title: `${lake.name} · water temperature`,
+      description: `Live water temperature and 15-day history for ${lake.name}. Weather forecast, swim-safety verdict.`,
+      url: `${site}${path}`,
+      images: lake.photo_url ? [{ url: lake.photo_url, alt: lake.name }] : undefined,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${lake.name} · water temperature`,
+      images: lake.photo_url ? [lake.photo_url] : undefined,
+    },
   };
 }
 
@@ -100,15 +122,37 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
 
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "Place",
-    name: lake.name,
-    description: `Live water temperature and swimming conditions for ${lake.name}.`,
-    geo: {
-      "@type": "GeoCoordinates",
-      latitude: lake.lat,
-      longitude: lake.lng,
-    },
-    address: { "@type": "PostalAddress", addressCountry: lake.country_code, addressRegion: lake.region },
+    "@graph": [
+      {
+        "@type": ["Place", "BodyOfWater"],
+        "@id": `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/lake/${lake.slug}#lake`,
+        name: lake.name,
+        alternateName: lake.name_local ?? undefined,
+        description: `Live water temperature (${
+          temp_c != null ? `${temp_c.toFixed(1)}°C` : "unknown"
+        }), 15-day history and swimming conditions for ${lake.name}.`,
+        geo: {
+          "@type": "GeoCoordinates",
+          latitude: lake.lat,
+          longitude: lake.lng,
+        },
+        address: {
+          "@type": "PostalAddress",
+          addressCountry: lake.country_code,
+          addressRegion: lake.region ?? undefined,
+        },
+        image: lake.photo_url ?? undefined,
+        sameAs: lake.wiki_url ?? undefined,
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "V-Lake", item: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/` },
+          { "@type": "ListItem", position: 2, name: lake.country_code, item: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/country/${lake.country_code.toLowerCase()}` },
+          { "@type": "ListItem", position: 3, name: lake.name },
+        ],
+      },
+    ],
   };
 
   return (

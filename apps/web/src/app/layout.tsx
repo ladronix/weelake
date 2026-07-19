@@ -32,6 +32,18 @@ export const metadata: Metadata = {
     "windy for lakes",
     "swimming forecast",
   ],
+  alternates: {
+    canonical: SITE_URL,
+    // The site is a single locale-agnostic surface (language is
+    // switched client-side via preferences); hreflang hints let search
+    // engines know which locales the same URL serves.
+    languages: {
+      "en-US": SITE_URL,
+      "cs-CZ": SITE_URL,
+      "de-DE": SITE_URL,
+      "x-default": SITE_URL,
+    },
+  },
   openGraph: {
     type: "website",
     title: `${SITE_NAME} — Global lake temperatures, live`,
@@ -40,6 +52,7 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: SITE_NAME,
     locale: "en_US",
+    alternateLocale: ["cs_CZ", "de_DE"],
   },
   twitter: {
     card: "summary_large_image",
@@ -65,8 +78,45 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Structured data — helps Google build sitelinks/searchbox for the brand.
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: SITE_NAME,
+        description:
+          "Live water temperatures for lakes worldwide. Free, beautiful, community-driven.",
+        inLanguage: ["en", "cs", "de"],
+        potentialAction: {
+          "@type": "SearchAction",
+          target: {
+            "@type": "EntryPoint",
+            urlTemplate: `${SITE_URL}/map?q={search_term_string}`,
+          },
+          "query-input": "required name=search_term_string",
+        },
+      },
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        name: SITE_NAME,
+        url: SITE_URL,
+        logo: `${SITE_URL}/favicon.svg`,
+      },
+    ],
+  };
+
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body>
         {children}
         <Analytics />
