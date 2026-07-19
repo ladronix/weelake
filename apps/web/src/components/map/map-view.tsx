@@ -13,6 +13,7 @@ import {
 import { bucketForTemp, formatTemp, relativeTime, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
+import { useT } from "@/lib/i18n";
 import { IconButton, TempPill, GlassCard } from "@/components/ui";
 
 interface LakeMarker {
@@ -79,6 +80,7 @@ const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style:
 type SortKey = "importance" | "warmest" | "coldest" | "name" | "distance" | "area";
 
 export function MapView() {
+  const t = useT();
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const markersRef = useRef<Marker[]>([]);
@@ -435,7 +437,7 @@ export function MapView() {
           icon={showList ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
           onClick={() => setShowList((v) => !v)}
           className="hidden md:inline-flex absolute top-4 left-4 z-30"
-          aria-label={showList ? "Hide list" : "Show list"}
+          aria-label={showList ? t("map.hideList") : t("map.showList")}
         />
 
         {/* Mobile: top search + filter */}
@@ -446,14 +448,14 @@ export function MapView() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search lakes…"
+              placeholder={t("map.searchLakes")}
               className="w-full rounded-full bg-white/95 backdrop-blur pl-10 pr-10 py-2.5 text-sm outline-none shadow-lg border border-white/60 focus:ring-2 focus:ring-water-400"
             />
             {query && (
               <button
                 onClick={() => setQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
-                aria-label="Clear"
+                aria-label={t("map.clear")}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -462,7 +464,7 @@ export function MapView() {
           <button
             onClick={() => setMobileFilterOpen(true)}
             className="relative h-11 w-11 rounded-full bg-white/95 backdrop-blur shadow-lg flex items-center justify-center text-water-700 hover:bg-white transition border border-white/60"
-            aria-label="Open filters"
+            aria-label={t("map.openFilters")}
           >
             <Filter className="h-4.5 w-4.5" />
             {activeFilterCount > 0 && (
@@ -482,10 +484,10 @@ export function MapView() {
               ? "bg-water-500 text-white border-water-600"
               : "bg-white/95 backdrop-blur text-water-800 border-white/60 hover:bg-white",
           )}
-          title={visibleOnly ? "Show all lakes" : "Only show lakes in current view"}
+          title={visibleOnly ? t("map.showAll") : t("map.onlyInView")}
         >
           <MapIcon className="h-3.5 w-3.5" />
-          {visibleOnly ? "Showing this area only" : "Search this area"}
+          {visibleOnly ? t("map.showingArea") : t("map.searchArea")}
         </button>
 
         {/* Hover tooltip */}
@@ -518,7 +520,7 @@ export function MapView() {
             <IconButton
               icon={<Layers className="h-5 w-5" />}
               onClick={() => setShowLayerMenu((v) => !v)}
-              aria-label="Map layers"
+              aria-label={t("map.mapLayers")}
               active={showLayerMenu}
             />
             {showLayerMenu && (
@@ -598,14 +600,14 @@ export function MapView() {
             <button
               onClick={() => zoom(1)}
               className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition border-b border-water-100"
-              aria-label="Zoom in"
+              aria-label={t("map.zoomIn")}
             >
               <Plus className="h-5 w-5" />
             </button>
             <button
               onClick={() => zoom(-1)}
               className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition"
-              aria-label="Zoom out"
+              aria-label={t("map.zoomOut")}
             >
               <Minus className="h-5 w-5" />
             </button>
@@ -615,13 +617,13 @@ export function MapView() {
             icon={<Locate className="h-5 w-5" />}
             variant="primary"
             onClick={doLocate}
-            aria-label="Find my location"
+            aria-label={t("map.locate")}
           />
 
           <IconButton
             icon={<Navigation2 className="h-4 w-4" />}
             onClick={centerWorld}
-            aria-label="Reset view"
+            aria-label={t("map.resetView")}
           />
         </div>
 
@@ -698,6 +700,7 @@ function SidebarContent(props: {
     hasLocation,
     onOpen,
   } = props;
+  const t = useT();
 
   return (
     <>
@@ -708,14 +711,14 @@ function SidebarContent(props: {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search lakes…"
+            placeholder={t("map.searchLakes")}
             className="w-full rounded-full border border-water-200/70 bg-white/90 pl-10 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-water-400"
           />
           {query && (
             <button
               onClick={() => setQuery("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
-              aria-label="Clear"
+              aria-label={t("map.clear")}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -867,6 +870,7 @@ function MobileBottomSheet({
   onOpen: (l: LakeMarker) => void;
   hideForSelection: boolean;
 }) {
+  const t = useT();
   if (hideForSelection) return null;
   const heights = {
     hidden: "translate-y-full",
@@ -891,7 +895,7 @@ function MobileBottomSheet({
           type="button"
           onClick={() => setState(state === "peek" ? "half" : state === "half" ? "full" : "peek")}
           className="w-full pt-2 pb-1 flex justify-center shrink-0"
-          aria-label="Toggle list"
+          aria-label={t("map.toggleList")}
         >
           <span className="h-1.5 w-10 rounded-full bg-slate-300" />
         </button>
@@ -907,7 +911,7 @@ function MobileBottomSheet({
           <button
             onClick={() => setState(state === "full" ? "peek" : "full")}
             className="h-9 w-9 rounded-full bg-water-100 text-water-700 flex items-center justify-center"
-            aria-label={state === "full" ? "Collapse" : "Expand"}
+            aria-label={state === "full" ? t("map.collapse") : t("map.expand")}
           >
             {state === "full"
               ? <ChevronRight className="h-4 w-4 rotate-90" />
@@ -987,20 +991,21 @@ function MobileFilterModal(props: {
     sortBy, setSortBy,
     count, clearAll,
   } = props;
+  const t = useT();
 
   return (
     <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white/95 backdrop-blur-xl safe-t">
       <div className="shrink-0 flex items-center justify-between px-5 pt-4 pb-3 border-b border-water-100/70">
         <div>
-          <div className="text-lg font-semibold text-deep leading-tight">Filters</div>
+          <div className="text-lg font-semibold text-deep leading-tight">{t("filter.title")}</div>
           <div className="text-xs text-slate-500">
-            {count} {count === 1 ? "lake" : "lakes"} match
+            {count === 1 ? t("filter.showOne") : t("filter.showN", { n: count })}
           </div>
         </div>
         <button
           onClick={onClose}
           className="h-11 w-11 rounded-full bg-water-50 flex items-center justify-center text-water-700 hover:bg-water-100 transition"
-          aria-label="Close filters"
+          aria-label={t("map.closeFilters")}
         >
           <X className="h-5 w-5" />
         </button>
@@ -1193,6 +1198,7 @@ function MobileFilterModal(props: {
 
 // ---------- SELECTED SHEET (bottom card / side card) ----------
 function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => void }) {
+  const t = useT();
   const bucket = bucketForTemp(lake.temp_c);
   const swim = assessSwim({ water_c: lake.temp_c });
 
@@ -1213,8 +1219,8 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
           type="button"
           onClick={onClose}
           className="absolute top-2 right-2 z-10 rounded-full h-9 w-9 flex items-center justify-center bg-white/25 hover:bg-white/40 text-white transition backdrop-blur"
-          aria-label="Close details"
-          title="Close"
+          aria-label={t("map.closeDetails")}
+          title={t("map.close")}
         >
           <X className="h-5 w-5" />
         </button>
@@ -1229,7 +1235,7 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
           <div className="text-5xl font-semibold tabular-nums leading-none">{formatTemp(lake.temp_c, 1)}</div>
           <div className="text-xs opacity-90 pb-1">
             <div className="font-semibold">{swim.headline}</div>
-            <div>{lake.measured_at ? `Updated ${relativeTime(lake.measured_at)}` : "No recent data"}</div>
+            <div>{lake.measured_at ? t("map.updatedAgo", { ago: relativeTime(lake.measured_at) }) : t("map.noRecent")}</div>
           </div>
         </div>
       </div>
