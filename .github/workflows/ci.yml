@@ -21,9 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      - name: Setup pnpm (from packageManager)
+        uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
@@ -62,7 +61,6 @@ jobs:
     needs: quality
     timeout-minutes: 15
     env:
-      # Build-time placeholders — real values injected by Vercel at deploy time.
       NEXT_PUBLIC_SUPABASE_URL:      "https://placeholder.supabase.co"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
       SUPABASE_SERVICE_ROLE_KEY:     "placeholder-service-key"
@@ -71,8 +69,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -103,7 +99,7 @@ jobs:
         run: python -m py_compile fetch.py
 
   # ---------------------------------------------------------------------------
-  # Security scan (no failures on dev-deps for MVP; alerts on real issues)
+  # Security audit (non-blocking)
   # ---------------------------------------------------------------------------
   audit:
     name: Security audit
@@ -113,8 +109,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
