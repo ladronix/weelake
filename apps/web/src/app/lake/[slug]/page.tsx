@@ -147,7 +147,7 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
       {
         "@type": "BreadcrumbList",
         itemListElement: [
-          { "@type": "ListItem", position: 1, name: "V-Lake", item: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/` },
+          { "@type": "ListItem", position: 1, name: "Weelake", item: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/` },
           { "@type": "ListItem", position: 2, name: lake.country_code, item: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/country/${lake.country_code.toLowerCase()}` },
           { "@type": "ListItem", position: 3, name: lake.name },
         ],

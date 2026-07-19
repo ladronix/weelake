@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * V-Lake · i18n structural check
+ * Weelake · i18n structural check
  * ------------------------------
  * Ensures every non-EN locale JSON exposes the same key-set as en.json
  * (the source of truth). Plural families (`_one`, `_few`, `_many`,

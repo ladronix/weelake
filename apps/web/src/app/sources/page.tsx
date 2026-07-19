@@ -5,7 +5,7 @@ import { Footer } from "@/components/layout/footer";
 
 export const metadata = {
   title: "Data sources",
-  description: "Every dataset that powers V-Lake: what it is, how often it refreshes, and its licence.",
+  description: "Every dataset that powers Weelake: what it is, how often it refreshes, and its licence.",
 };
 
 interface Source {
@@ -118,7 +118,7 @@ export default function DataSourcesPage() {
             Data sources
           </h1>
           <p className="mt-2 text-slate-600">
-            V-Lake stitches together open climate, weather, geographic, and photographic
+            Weelake stitches together open climate, weather, geographic, and photographic
             datasets. Everything below is free to use. All contributions are attributed
             per their respective licences.
           </p>

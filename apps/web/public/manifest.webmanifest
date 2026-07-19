@@ -1,6 +1,6 @@
 {
-  "name": "V-Lake · Global lake temperatures",
-  "short_name": "V-Lake",
+  "name": "Weelake · Global lake temperatures",
+  "short_name": "Weelake",
   "description": "Live water temperatures for lakes worldwide.",
   "start_url": "/",
   "display": "standalone",

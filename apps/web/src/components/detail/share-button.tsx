@@ -14,7 +14,7 @@ export function ShareButton({ title }: { title: string }) {
     track("lake.share", { title });
     if (navigator.share) {
       try {
-        await navigator.share({ title: `${title} · V-Lake`, url });
+        await navigator.share({ title: `${title} · Weelake`, url });
         return;
       } catch { /* user cancelled */ }
     }

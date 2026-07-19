@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * V-Lake · Hero background
+ * Weelake · Hero background
  *
  * Layered backdrop (all optional, non-blocking):
  *   • Solid water gradient

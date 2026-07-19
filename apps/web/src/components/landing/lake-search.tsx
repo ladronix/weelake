@@ -31,7 +31,7 @@ interface Props {
 }
 
 /**
- * V-Lake · fulltext search
+ * Weelake · fulltext search
  *
  * Keyboard:
  *   ↓ / ↑    move highlight

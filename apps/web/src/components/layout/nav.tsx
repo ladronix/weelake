@@ -26,12 +26,12 @@ export function Nav() {
               "flex items-center gap-2 px-2 py-1 shrink-0 rounded-full",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2",
             )}
-            aria-label="V-Lake home"
+            aria-label="Weelake home"
           >
             <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-water-400 to-water-700 shadow-md">
               <Droplet className="h-4 w-4 text-white" aria-hidden="true" />
             </div>
-            <span className="font-semibold text-deep tracking-tight text-base">V·Lake</span>
+            <span className="font-semibold text-deep tracking-tight text-base">Weelake</span>
           </Link>
 
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">

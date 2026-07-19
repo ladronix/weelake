@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 /**
- * V-Lake · analytics
+ * Weelake · analytics
  *
  * Umami-based, cookie-free, GDPR-friendly.
  * Loaded only in production and only if NEXT_PUBLIC_UMAMI_WEBSITE_ID is set.

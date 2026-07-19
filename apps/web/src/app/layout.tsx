@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://weelake.com";
-const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "V-Lake";
+const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Weelake";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

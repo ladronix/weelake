@@ -7,7 +7,7 @@ import cs from "./locales/cs.json";
 import de from "./locales/de.json";
 
 /**
- * V-Lake · lightweight i18n
+ * Weelake · lightweight i18n
  *
  * Dictionary lookup with `{placeholder}` substitution and English fallback.
  * Uses JSON files per locale — smaller diffs, easier for translators, still

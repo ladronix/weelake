@@ -1,5 +1,5 @@
 /**
- * V-Lake · UI library
+ * Weelake · UI library
  * Reusable atoms used across landing, map, detail, country pages.
  */
 export { TempPill } from "./temp-pill";

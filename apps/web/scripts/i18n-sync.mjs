@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * V-Lake · i18n auto-translation
+ * Weelake · i18n auto-translation
  * ------------------------------
  * For each target locale (cs, de) walk the reference locale (en.json)
  * and translate every key that is missing (or listed in --force) using

@@ -16,7 +16,7 @@ export function Footer() {
     <footer className="mt-8 border-t border-water-100/70 bg-white/40 backdrop-blur-md safe-b">
       <div className="section py-10 grid gap-8 md:grid-cols-4">
         <div>
-          <div className="font-semibold text-deep tracking-tight">V·Lake</div>
+          <div className="font-semibold text-deep tracking-tight">Weelake</div>
           <p className="mt-2 text-sm text-slate-600">
             {label("footer.tagline")}
           </p>

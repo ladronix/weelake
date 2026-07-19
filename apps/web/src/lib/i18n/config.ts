@@ -1,5 +1,5 @@
 /**
- * V-Lake · i18n locale config
+ * Weelake · i18n locale config
  * Single source of truth for supported locales, default locale,
  * and the pure `detectSystemLocale()` helper (testable, no side-effects).
  */

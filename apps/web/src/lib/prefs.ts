@@ -10,7 +10,7 @@ import {
 } from "./i18n/config";
 
 /**
- * V-Lake · preferences (cookie-free, SSR-safe)
+ * Weelake · preferences (cookie-free, SSR-safe)
  *
  * SSR contract:
  *  - On the server we render defaults (°C, en) — no navigator, no storage.
