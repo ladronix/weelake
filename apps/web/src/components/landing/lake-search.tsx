@@ -44,6 +44,10 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
   const t = useT();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  /** Featured lakes shown when the user focuses the input with an empty
+   *  query — gives them a preview of what's in the database without them
+   *  having to type. Preloaded once on mount from /api/search?featured=1. */
+  const [featured, setFeatured] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -97,6 +101,21 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query, doSearch]);
+
+  // Preload a small featured-lakes list once so the suggestion dropdown
+  // has something to show on the very first focus (empty query).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/search?featured=1&limit=6")
+      .then((r) => (r.ok ? r.json() : { results: [] }))
+      .then((d) => {
+        if (!cancelled) setFeatured(d.results ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLocate = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -177,7 +196,7 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
           spellCheck={false}
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => { setFocused(true); if (query || results.length) setOpen(true); }}
+          onFocus={() => { setFocused(true); setOpen(true); }}
           onBlur={() => { setFocused(false); setTimeout(() => setOpen(false), 150); }}
           onKeyDown={onKeyDown}
           placeholder={placeholder ?? t("search.placeholder")}
@@ -212,7 +231,7 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
       </div>
 
       <AnimatePresence>
-        {open && (results.length > 0 || (loading && query)) && (
+        {open && (results.length > 0 || (loading && query) || (!query && featured.length > 0)) && (
           <motion.div
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -223,10 +242,17 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
             role="listbox"
           >
             <ul ref={listRef} className="max-h-[60vh] overflow-y-auto py-2 no-scrollbar">
-              {loading && results.length === 0 && (
-                <li className="px-4 py-3 text-sm text-slate-500">Searching…</li>
+              {!query && featured.length > 0 && (
+                <li className="px-4 pt-1 pb-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold pointer-events-none">
+                  {t("search.suggestedHeading")}
+                </li>
               )}
-              {results.map((r, i) => (
+              {loading && results.length === 0 && query && (
+                <li className="px-4 py-3 text-sm text-slate-500">{t("search.searching")}</li>
+              )}
+              {/* Show real results when we have a query, otherwise the featured
+                  fallback so the dropdown is never empty on focus. */}
+              {(query ? results : featured).map((r, i) => (
                 <li key={r.id} role="option" aria-selected={i === highlighted} data-search-row>
                   <Link
                     href={`/lake/${r.slug}`}
