@@ -230,6 +230,14 @@ export function MapView() {
     return arr;
   }, [lakes, countryFilter, typeFilter, tempRange, swimFilter, sizeFilter, photoOnly, query, sortBy, visibleOnly, bounds, userLoc]);
 
+  // Ref mirror of `filtered`. Layer click handlers are registered once on
+  // first `map.on(...)` and their closure captures whatever `filtered` was
+  // at that moment (usually `[]` before lakes have loaded). Reading through
+  // a ref means the click callback always sees the latest array without
+  // needing to re-register the handler on every render.
+  const filteredRef = useRef<LakeMarker[]>([]);
+  useEffect(() => { filteredRef.current = filtered; }, [filtered]);
+
   const countries = useMemo(
     () => Array.from(new Set(lakes.map((l) => l.country_code))).sort(),
     [lakes],
@@ -499,11 +507,13 @@ export function MapView() {
         });
 
         // Click on individual dot / label → open detail sheet.
+        // Reads `filteredRef.current` (not the closed-over `filtered`) so
+        // it survives across data refreshes without re-binding.
         const openFeature = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
           const f = e.features?.[0];
           if (!f) return;
           const props = f.properties as { id: string; slug: string };
-          const target = filtered.find((l) => l.id === props.id);
+          const target = filteredRef.current.find((l) => l.id === props.id);
           if (!target || f.geometry.type !== "Point") return;
           const [lng, lat] = f.geometry.coordinates;
           setSelected(target);
@@ -518,7 +528,7 @@ export function MapView() {
           const f = e.features?.[0];
           if (!f) return;
           const props = f.properties as { id: string };
-          const target = filtered.find((l) => l.id === props.id);
+          const target = filteredRef.current.find((l) => l.id === props.id);
           if (target) {
             const p = map.project(e.lngLat);
             setHovered({ lake: target, x: p.x, y: p.y });
