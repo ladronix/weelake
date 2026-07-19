@@ -38,6 +38,9 @@ jobs:
       - name: Lint (web)
         run: pnpm --filter web lint
 
+      - name: i18n structural check
+        run: pnpm --filter web i18n:check
+
       - name: Type-check (worker)
         run: pnpm --filter openmeteo-refresh exec tsc --noEmit
 
