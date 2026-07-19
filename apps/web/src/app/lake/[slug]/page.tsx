@@ -13,6 +13,7 @@ import { HistoryChart } from "@/components/detail/history-chart";
 import { NearbyLakes } from "@/components/detail/nearby-lakes";
 import { ShareButton } from "@/components/detail/share-button";
 import { WaterQualityCard } from "@/components/detail/water-quality-card";
+import { TLabel, PLabel } from "@/components/ui";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -121,9 +122,9 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
         <div className="flex items-center justify-between gap-2">
           <Link
             href={`/map?focus=${lake.slug}`}
-            className="inline-flex items-center gap-1.5 text-sm text-water-800 hover:text-water-900 transition font-semibold rounded-full py-2 px-3.5 bg-white/70 backdrop-blur border border-white/60 hover:bg-white shadow-sm"
+            className="inline-flex items-center gap-1.5 text-sm text-water-800 hover:text-water-900 transition font-semibold rounded-full py-2 px-3.5 bg-white/70 backdrop-blur border border-white/60 hover:bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
           >
-            <ArrowLeft className="h-4 w-4" /> Back to map
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> <TLabel tKey="detail.backToMap" />
           </Link>
           <ShareButton title={lake.name} />
         </div>
@@ -188,9 +189,19 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                     </div>
                   </div>
                   <div className="text-[11px] sm:text-xs opacity-85 space-y-0.5">
-                    {measured_at && <div>Updated {relativeTime(measured_at)}</div>}
-                    {source && <div className="break-words">Source: {source.replace(/_/g, " ")}</div>}
-                    <div className="opacity-75">Quality: {current?.quality ?? "medium"}</div>
+                    {measured_at && (
+                      <div>
+                        <TLabel tKey="detail.updated" vars={{ ago: relativeTime(measured_at) }} />
+                      </div>
+                    )}
+                    {source && (
+                      <div className="break-words">
+                        <TLabel tKey="detail.source" vars={{ source: source.replace(/_/g, " ") }} />
+                      </div>
+                    )}
+                    <div className="opacity-75">
+                      <TLabel tKey="detail.quality" vars={{ q: current?.quality ?? "medium" }} />
+                    </div>
                   </div>
                 </div>
 
@@ -219,13 +230,15 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                     <Thermometer className="h-4 w-4 text-water-700" />
                   </div>
                   <div>
-                    <div className="font-semibold text-deep">Water temperature history</div>
-                    <div className="text-xs text-slate-500">Last {chartData.length} days</div>
+                    <div className="font-semibold text-deep"><TLabel tKey="detail.historyTitle" /></div>
+                    <div className="text-xs text-slate-500">
+                      <PLabel baseKey="detail.historyLastDays" count={chartData.length} />
+                    </div>
                   </div>
                 </div>
                 {chartData.length > 0 && (
                   <div className="text-right">
-                    <div className="text-xs text-slate-500">Avg</div>
+                    <div className="text-xs text-slate-500"><TLabel tKey="detail.historyAvg" /></div>
                     <div className="text-sm font-semibold text-deep tabular-nums">
                       {formatTemp(chartData.reduce((a, b) => a + b.temp, 0) / chartData.length, 1)}
                     </div>
@@ -237,13 +250,13 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                   ? <HistoryChart data={chartData} color={bucket.color} />
                   : (
                     <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                      Building history — check back tomorrow.
+                      <TLabel tKey="detail.historyBuilding" />
                     </div>
                   )}
               </div>
               <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-500">
-                <Info className="h-3 w-3" />
-                <span>Historical & forecast data is estimated from Open-Meteo. Copernicus satellite integration coming soon for higher accuracy on small lakes.</span>
+                <Info className="h-3 w-3" aria-hidden="true" />
+                <span><TLabel tKey="detail.historyNote" /></span>
               </div>
             </div>
 
@@ -255,8 +268,8 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                     <Sun className="h-4 w-4 text-water-700" />
                   </div>
                   <div>
-                    <div className="font-semibold text-deep">7-day weather forecast</div>
-                    <div className="text-xs text-slate-500">Air temperature, wind, precipitation</div>
+                    <div className="font-semibold text-deep"><TLabel tKey="detail.forecastTitle" /></div>
+                    <div className="text-xs text-slate-500"><TLabel tKey="detail.forecastSubtitle" /></div>
                   </div>
                 </div>
                 <div className="mt-4 flex overflow-x-auto no-scrollbar gap-2 -mx-1 px-1">
@@ -293,15 +306,15 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                     <Waves className="h-4 w-4 text-water-700" />
                   </div>
                   <div>
-                    <div className="font-semibold text-deep">Conditions right now</div>
+                    <div className="font-semibold text-deep"><TLabel tKey="detail.conditionsTitle" /></div>
                     <div className="text-xs text-slate-500">{conditionFromCode(weather.current.weather_code)}</div>
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  <MetaCell icon={<Thermometer className="h-3.5 w-3.5" />} label="Air" value={`${weather.current.temperature_2m.toFixed(1)}°C`} />
-                  <MetaCell icon={<Wind className="h-3.5 w-3.5" />} label="Wind" value={`${weather.current.wind_speed_10m.toFixed(0)} km/h`} />
-                  <MetaCell icon={<Sun className="h-3.5 w-3.5" />} label="UV" value={weather.uv_index != null ? weather.uv_index.toFixed(0) : "—"} />
-                  <MetaCell icon={<CloudRain className="h-3.5 w-3.5" />} label="Rain" value={`${weather.current.precipitation.toFixed(1)} mm`} />
+                  <MetaCell icon={<Thermometer className="h-3.5 w-3.5" />} labelKey="detail.condAir" value={`${weather.current.temperature_2m.toFixed(1)}°C`} />
+                  <MetaCell icon={<Wind className="h-3.5 w-3.5" />} labelKey="detail.condWind" value={`${weather.current.wind_speed_10m.toFixed(0)} km/h`} />
+                  <MetaCell icon={<Sun className="h-3.5 w-3.5" />} labelKey="detail.condUv" value={weather.uv_index != null ? weather.uv_index.toFixed(0) : "—"} />
+                  <MetaCell icon={<CloudRain className="h-3.5 w-3.5" />} labelKey="detail.condRain" value={`${weather.current.precipitation.toFixed(1)} mm`} />
                 </div>
               </div>
             )}
@@ -313,35 +326,35 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
             />
 
             <div className="rounded-4xl bg-white/80 backdrop-blur-md border border-white/60 p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)]">
-              <div className="font-semibold text-deep">About</div>
+              <div className="font-semibold text-deep"><TLabel tKey="detail.aboutTitle" /></div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                 {lake.area_km2 && (
                   <>
-                    <dt className="text-slate-500">Area</dt>
+                    <dt className="text-slate-500"><TLabel tKey="detail.area" /></dt>
                     <dd className="font-medium text-deep tabular-nums text-right">{Number(lake.area_km2).toFixed(1)} km²</dd>
                   </>
                 )}
                 {lake.max_depth_m && (
                   <>
-                    <dt className="text-slate-500">Max depth</dt>
+                    <dt className="text-slate-500"><TLabel tKey="detail.maxDepth" /></dt>
                     <dd className="font-medium text-deep tabular-nums text-right">{Number(lake.max_depth_m).toFixed(0)} m</dd>
                   </>
                 )}
                 {lake.mean_depth_m && (
                   <>
-                    <dt className="text-slate-500">Mean depth</dt>
+                    <dt className="text-slate-500"><TLabel tKey="detail.meanDepth" /></dt>
                     <dd className="font-medium text-deep tabular-nums text-right">{Number(lake.mean_depth_m).toFixed(0)} m</dd>
                   </>
                 )}
                 {lake.elevation_m != null && (
                   <>
-                    <dt className="text-slate-500">Elevation</dt>
+                    <dt className="text-slate-500"><TLabel tKey="detail.elevation" /></dt>
                     <dd className="font-medium text-deep tabular-nums text-right">{Number(lake.elevation_m).toFixed(0)} m</dd>
                   </>
                 )}
-                <dt className="text-slate-500">Type</dt>
+                <dt className="text-slate-500"><TLabel tKey="detail.type" /></dt>
                 <dd className="font-medium text-deep text-right capitalize">{lake.type}</dd>
-                <dt className="text-slate-500">Coordinates</dt>
+                <dt className="text-slate-500"><TLabel tKey="detail.coordinates" /></dt>
                 <dd className="font-medium text-deep tabular-nums text-right text-xs">{lake.lat.toFixed(3)}, {lake.lng.toFixed(3)}</dd>
               </dl>
             </div>
@@ -349,26 +362,26 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
             <div className="flex flex-col gap-2">
               <Link
                 href={`/map?focus=${lake.slug}`}
-                className="rounded-full bg-water-500 hover:bg-water-600 text-white font-semibold py-3 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2"
+                className="rounded-full bg-water-500 hover:bg-water-600 text-white font-semibold py-3 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
               >
-                <MapIcon className="h-4 w-4" /> Show on map
+                <MapIcon className="h-4 w-4" aria-hidden="true" /> <TLabel tKey="detail.showOnMap" />
               </Link>
               <a
                 href={`https://www.google.com/maps/dir/?api=1&destination=${lake.lat},${lake.lng}`}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-white/80 hover:bg-white border border-water-200 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2"
+                className="rounded-full bg-white/80 hover:bg-white border border-water-200 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
               >
-                <Navigation2 className="h-4 w-4" /> Navigate to this lake
+                <Navigation2 className="h-4 w-4" aria-hidden="true" /> <TLabel tKey="detail.navigate" />
               </a>
               {lake.wiki_url && (
                 <a
                   href={lake.wiki_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2 text-sm"
+                  className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
                 >
-                  <ExternalLink className="h-4 w-4" /> Wikipedia
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" /> <TLabel tKey="detail.wikipedia" />
                 </a>
               )}
             </div>
@@ -382,10 +395,10 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
   );
 }
 
-function MetaCell({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function MetaCell({ icon, labelKey, value }: { icon: React.ReactNode; labelKey: string; value: string }) {
   return (
     <div className="rounded-2xl bg-water-50/60 border border-water-100/60 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1">{icon} {label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1">{icon} <TLabel tKey={labelKey} /></div>
       <div className="mt-0.5 text-base font-semibold text-deep tabular-nums">{value}</div>
     </div>
   );

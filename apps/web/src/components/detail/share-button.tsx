@@ -3,9 +3,11 @@
 import { Share2, Check } from "lucide-react";
 import { useState } from "react";
 import { track } from "@/lib/analytics";
+import { useT } from "@/lib/i18n";
 
 export function ShareButton({ title }: { title: string }) {
   const [copied, setCopied] = useState(false);
+  const t = useT();
 
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -27,10 +29,10 @@ export function ShareButton({ title }: { title: string }) {
     <button
       type="button"
       onClick={share}
-      className="inline-flex items-center gap-1.5 rounded-full bg-white/70 backdrop-blur border border-white/60 py-1.5 px-3 text-sm font-medium text-water-700 hover:bg-white transition shadow-sm"
+      className="inline-flex items-center gap-1.5 rounded-full bg-white/70 backdrop-blur border border-white/60 py-1.5 px-3 text-sm font-medium text-water-700 hover:bg-white transition shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
     >
-      {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Share2 className="h-4 w-4" />}
-      {copied ? "Copied" : "Share"}
+      {copied ? <Check className="h-4 w-4 text-emerald-600" aria-hidden="true" /> : <Share2 className="h-4 w-4" aria-hidden="true" />}
+      {copied ? t("detail.copied") : t("detail.share")}
     </button>
   );
 }
