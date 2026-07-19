@@ -19,8 +19,9 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <div className="text-sm font-semibold text-deep">Data sources</div>
+          <div className="text-sm font-semibold text-deep">Data</div>
           <ul className="mt-2 space-y-1 text-sm text-slate-600">
+            <li><Link href="/sources" className="hover:text-water-700">All sources</Link></li>
             <li><a href="https://marine.copernicus.eu" target="_blank" rel="noreferrer" className="hover:text-water-700">Copernicus Marine</a></li>
             <li><a href="https://open-meteo.com" target="_blank" rel="noreferrer" className="hover:text-water-700">Open-Meteo</a></li>
             <li><a href="https://www.hydrosheds.org/products/hydrolakes" target="_blank" rel="noreferrer" className="hover:text-water-700">HydroLAKES</a></li>

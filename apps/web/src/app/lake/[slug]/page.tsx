@@ -132,7 +132,7 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
           {/* LEFT · big hero card */}
           <div className="lg:col-span-2 space-y-5">
             <div
-              className="relative rounded-4xl p-6 sm:p-8 text-white shadow-[0_20px_60px_rgba(14,165,233,0.20)] overflow-hidden"
+              className="relative rounded-4xl p-4 sm:p-8 text-white shadow-[0_20px_60px_rgba(14,165,233,0.20)] overflow-hidden"
               style={{ background: `linear-gradient(135deg, ${bucket.color}, #0369A1)` }}
             >
               <div
@@ -146,29 +146,29 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                 }}
               />
               <div className="relative">
-                <div className="text-[10px] uppercase tracking-wider opacity-90 flex items-center gap-2">
+                <div className="text-[10px] uppercase tracking-wider opacity-90 flex items-center gap-2 flex-wrap">
                   <span className="rounded-full bg-white/20 px-2 py-0.5">{lake.country_code}</span>
                   <span>{lake.type}</span>
-                  {lake.region && <span>· {lake.region}</span>}
+                  {lake.region && <span className="truncate">· {lake.region}</span>}
                 </div>
-                <h1 className="mt-2 text-3xl sm:text-5xl font-semibold tracking-tight">
+                <h1 className="mt-2 text-2xl sm:text-5xl font-semibold tracking-tight break-words">
                   {lake.name}
                 </h1>
                 {lake.name_local && lake.name_local !== lake.name && (
-                  <div className="opacity-90 text-lg">{lake.name_local}</div>
+                  <div className="opacity-90 text-base sm:text-lg break-words">{lake.name_local}</div>
                 )}
-                <div className="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
+                <div className="mt-5 sm:mt-6 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 sm:gap-x-8 sm:gap-y-4">
                   <div>
-                    <div className="text-6xl sm:text-7xl font-semibold tabular-nums leading-none">
+                    <div className="text-5xl sm:text-7xl font-semibold tabular-nums leading-none">
                       {formatTemp(temp_c, 1)}
                     </div>
-                    <div className="mt-2 text-base sm:text-lg opacity-95 font-medium">
+                    <div className="mt-2 text-sm sm:text-lg opacity-95 font-medium">
                       {assessment.headline}
                     </div>
                   </div>
-                  <div className="text-xs opacity-85 space-y-0.5">
+                  <div className="text-[11px] sm:text-xs opacity-85 space-y-0.5">
                     {measured_at && <div>Updated {relativeTime(measured_at)}</div>}
-                    {source && <div>Source: {source.replace(/_/g, " ")}</div>}
+                    {source && <div className="break-words">Source: {source.replace(/_/g, " ")}</div>}
                     <div className="opacity-75">Quality: {current?.quality ?? "medium"}</div>
                   </div>
                 </div>

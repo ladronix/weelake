@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { MapView } from "@/components/map/map-view";
 import { Nav } from "@/components/layout/nav";
 
@@ -13,7 +14,9 @@ export default function MapPage() {
         <Nav />
       </div>
       <main className="flex-1 relative overflow-hidden min-h-0">
-        <MapView />
+        <Suspense fallback={<div className="h-full w-full bg-water-50" />}>
+          <MapView />
+        </Suspense>
       </main>
     </div>
   );

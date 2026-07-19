@@ -1,7 +1,6 @@
-# Weelake · Setup guide
+# Weelake · Local development guide
 
-This is the ordered checklist to go from empty repo → running localhost →
-deployed to `weelake.com`. Follow top-to-bottom.
+Getting to a running localhost. For production deployment, see **`DEPLOY.md`**.
 
 ---
 
