@@ -130,13 +130,34 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
 
         <div className="mt-4 grid gap-5 lg:grid-cols-3">
           {/* LEFT · big hero card */}
-          <div className="lg:col-span-2 space-y-5">
+          <div className="lg:col-span-2 space-y-5 min-w-0">
             <div
               className="relative rounded-4xl p-4 sm:p-8 text-white shadow-[0_20px_60px_rgba(14,165,233,0.20)] overflow-hidden"
               style={{ background: `linear-gradient(135deg, ${bucket.color}, #0369A1)` }}
             >
+              {/* Lake photo as a soft backdrop behind the temperature gradient.
+                  Using next/image would be nicer but the photo_url points at
+                  arbitrary Wikimedia hosts — keep it as a plain <img> under a
+                  strong tint so we still get the temperature-coded feel. */}
+              {lake.photo_url && (
+                <img
+                  src={lake.photo_url}
+                  alt=""
+                  aria-hidden="true"
+                  loading="lazy"
+                  decoding="async"
+                  className="absolute inset-0 h-full w-full object-cover opacity-40 mix-blend-luminosity"
+                />
+              )}
               <div
-                aria-hidden
+                aria-hidden="true"
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(135deg, ${bucket.color}CC 0%, #0369A1E6 100%)`,
+                }}
+              />
+              <div
+                aria-hidden="true"
                 className="absolute inset-0 opacity-30"
                 style={{
                   backgroundImage: `
@@ -264,7 +285,7 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
           </div>
 
           {/* RIGHT · sidebar */}
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {weather?.current && (
               <div className="rounded-4xl bg-white/80 backdrop-blur-md border border-white/60 p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)]">
                 <div className="flex items-center gap-2">
