@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 import { TempPill } from "@/components/ui";
+import { StatLabel } from "./live-stats-value";
 import { Flame, Snowflake, ChevronRight } from "lucide-react";
 
 export async function HotColdLists() {
@@ -24,17 +25,17 @@ export async function HotColdLists() {
   return (
     <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
       <List
-        title="Warmest right now"
-        subtitle="Best for a long swim"
+        titleKey="extremes.warmest"
+        subtitleKey="extremes.warmestSub"
         gradient="from-amber-400 to-red-500"
-        icon={<Flame className="h-4 w-4 text-white" />}
+        icon={<Flame className="h-4 w-4 text-white" aria-hidden="true" />}
         rows={hottest ?? []}
       />
       <List
-        title="Coldest right now"
-        subtitle="For the brave dippers"
+        titleKey="extremes.coldest"
+        subtitleKey="extremes.coldestSub"
         gradient="from-sky-400 to-indigo-600"
-        icon={<Snowflake className="h-4 w-4 text-white" />}
+        icon={<Snowflake className="h-4 w-4 text-white" aria-hidden="true" />}
         rows={coldest ?? []}
       />
     </div>
@@ -42,10 +43,10 @@ export async function HotColdLists() {
 }
 
 function List({
-  title, subtitle, gradient, icon, rows,
+  titleKey, subtitleKey, gradient, icon, rows,
 }: {
-  title: string;
-  subtitle: string;
+  titleKey: string;
+  subtitleKey: string;
   gradient: string;
   icon: React.ReactNode;
   rows: Array<{
@@ -62,14 +63,18 @@ function List({
           {icon}
         </div>
         <div>
-          <div className="text-base font-semibold text-deep">{title}</div>
-          <div className="text-xs text-slate-500">{subtitle}</div>
+          <div className="text-base font-semibold text-deep">
+            <StatLabel tKey={titleKey} />
+          </div>
+          <div className="text-xs text-slate-500">
+            <StatLabel tKey={subtitleKey} />
+          </div>
         </div>
       </div>
       <ul className="divide-y divide-water-100/50">
         {rows.length === 0 && (
           <li className="px-6 py-6 text-sm text-slate-500 text-center">
-            No data yet — the daily fetch is running.
+            <StatLabel tKey="extremes.empty" />
           </li>
         )}
         {rows.map((r, i) => {
@@ -80,7 +85,7 @@ function List({
             <li key={lake.slug}>
               <Link
                 href={`/lake/${lake.slug}`}
-                className="group flex items-center gap-3 px-5 sm:px-6 py-3 hover:bg-water-50/70 transition"
+                className="group flex items-center gap-3 px-5 sm:px-6 py-3 hover:bg-water-50/70 transition focus:outline-none focus-visible:bg-water-50"
               >
                 <span className="w-5 text-center text-xs font-semibold text-slate-400 tabular-nums shrink-0">
                   {i + 1}
@@ -94,7 +99,7 @@ function List({
                   </span>
                 </span>
                 <TempPill temp={temp} size="sm" precision={1} className="!rounded-full" />
-                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
+                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" aria-hidden="true" />
               </Link>
             </li>
           );

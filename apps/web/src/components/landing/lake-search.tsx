@@ -7,6 +7,7 @@ import { Search, MapPin, Locate, X, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { TempPill } from "@/components/ui";
+import { useT } from "@/lib/i18n";
 
 interface SearchResult {
   id: string;
@@ -40,6 +41,7 @@ interface Props {
  */
 export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props) {
   const router = useRouter();
+  const t = useT();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -178,34 +180,34 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
           onFocus={() => { setFocused(true); if (query || results.length) setOpen(true); }}
           onBlur={() => { setFocused(false); setTimeout(() => setOpen(false), 150); }}
           onKeyDown={onKeyDown}
-          placeholder={placeholder ?? "Search a lake, or use your location…"}
+          placeholder={placeholder ?? t("search.placeholder")}
           className="flex-1 bg-transparent outline-none placeholder:text-slate-400 text-deep text-base sm:text-lg min-w-0"
-          aria-label="Search lakes"
+          aria-label={t("search.aria")}
           aria-autocomplete="list"
           aria-controls="search-results"
           role="combobox"
           // eslint-disable-next-line jsx-a11y/role-supports-aria-props
           aria-expanded={open}
         />
-        {loading && <Loader2 className="h-4 w-4 text-water-500 animate-spin shrink-0" />}
+        {loading && <Loader2 className="h-4 w-4 text-water-500 animate-spin shrink-0" aria-hidden="true" />}
         {query && !loading && (
           <button
             type="button"
             onClick={() => { setQuery(""); setResults([]); inputRef.current?.focus(); }}
-            className="rounded-full p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100/70 transition"
-            aria-label="Clear search"
+            className="rounded-full p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100/70 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500"
+            aria-label={t("search.clear")}
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         )}
         <button
           type="button"
           onClick={handleLocate}
-          className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-water-500 text-white hover:bg-water-600 transition shadow"
-          aria-label="Use my location"
-          title="Use my location"
+          className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-water-500 text-white hover:bg-water-600 transition shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
+          aria-label={t("search.locate")}
+          title={t("search.locate")}
         >
-          <Locate className="h-4 w-4" />
+          <Locate className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
 

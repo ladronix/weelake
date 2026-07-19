@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LakeSearch } from "@/components/landing/lake-search";
+import { useT } from "@/lib/i18n";
 
 /**
  * Sticky compact search bar that appears when the user scrolls past the hero.
@@ -9,6 +10,7 @@ import { LakeSearch } from "@/components/landing/lake-search";
  */
 export function StickySearch() {
   const [visible, setVisible] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 320);
@@ -26,7 +28,7 @@ export function StickySearch() {
     >
       <div className="section pointer-events-auto">
         <div className="max-w-2xl mx-auto">
-          <LakeSearch compact placeholder="Search a lake…" />
+          <LakeSearch compact placeholder={t("search.placeholderShort")} />
         </div>
       </div>
     </div>

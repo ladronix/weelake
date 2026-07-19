@@ -6,6 +6,7 @@ import maplibregl, { Map, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ArrowUpRight, Map as MapIcon } from "lucide-react";
 import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { useT } from "@/lib/i18n";
 
 interface Lake {
   id: string;
@@ -27,6 +28,7 @@ export function MiniMapPreview() {
   const markersRef = useRef<Marker[]>([]);
   const [lakes, setLakes] = useState<Lake[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const t = useT();
 
   useEffect(() => {
     fetch("/api/lakes?limit=200")
@@ -104,42 +106,40 @@ export function MiniMapPreview() {
       {/* Header pill */}
       <div className="absolute top-4 left-4 right-4 flex items-start justify-between pointer-events-none">
         <div className="inline-flex items-center gap-2 rounded-full bg-white/85 backdrop-blur-md border border-white/60 px-3 py-1 text-[11px] font-semibold text-water-800 shadow-sm">
-          <span className="relative flex h-1.5 w-1.5">
+          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
           </span>
-          Live temperature map
+          {t("preview.live")}
         </div>
         <div className="inline-flex items-center gap-1 rounded-full bg-white/85 backdrop-blur-md border border-white/60 px-3 py-1 text-[11px] font-semibold text-water-800 shadow-sm">
-          <MapIcon className="h-3 w-3" /> {totalCount} lakes
+          <MapIcon className="h-3 w-3" aria-hidden="true" /> {t("preview.lakes", { n: totalCount })}
         </div>
       </div>
 
       {/* CTA bottom */}
       <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 pointer-events-none">
         <div className="rounded-3xl bg-white/85 backdrop-blur-md border border-white/60 px-4 py-2.5 shadow-sm max-w-[240px]">
-          <div className="text-xs text-slate-500">Preview</div>
-          <div className="text-sm font-semibold text-deep leading-snug">
-            Filter, zoom, discover.
-            <br />
-            Every lake, live.
+          <div className="text-xs text-slate-500">{t("preview.badge")}</div>
+          <div className="text-sm font-semibold text-deep leading-snug whitespace-pre-line">
+            {t("preview.tagline")}
           </div>
         </div>
         <div className="pointer-events-auto rounded-full bg-water-500 group-hover:bg-water-600 text-white font-semibold text-sm px-5 py-3 flex items-center gap-1.5 shadow-[0_8px_20px_rgba(14,165,233,0.35)] group-hover:scale-105 transition-all">
-          Open the map <ArrowUpRight className="h-4 w-4" />
+          {t("cta.openMap").replace(" →", "")} <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
         </div>
       </div>
 
       {/* Static sample if map fails */}
       {lakes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-water-100 to-water-200">
-          <div className="text-water-700 text-sm">Loading map preview…</div>
+          <div className="text-water-700 text-sm">{t("preview.loading")}</div>
         </div>
       )}
 
       {/* Silent legend */}
       <div className="absolute top-16 right-4 pointer-events-none hidden md:flex items-center gap-1 rounded-full bg-white/85 backdrop-blur-md border border-white/60 px-2.5 py-1 text-[9px] text-slate-600">
-        <span>Cold</span>
+        <span>{t("preview.legendCold")}</span>
         <span
           className="h-1.5 w-14 rounded-full"
           style={{
@@ -147,7 +147,7 @@ export function MiniMapPreview() {
               "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)",
           }}
         />
-        <span>Hot</span>
+        <span>{t("preview.legendHot")}</span>
       </div>
 
       <span className="sr-only">{formatTemp(15)} example — click to open full map</span>

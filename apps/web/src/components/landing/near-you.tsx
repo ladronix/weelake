@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Locate, MapPin, Loader2, ChevronRight } from "lucide-react";
-import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { bucketForTemp } from "@/lib/temperature";
 import { track } from "@/lib/analytics";
+import { useT } from "@/lib/i18n";
 
 interface NearbyLake {
   id: string;
@@ -21,6 +22,7 @@ export function NearYou() {
   const [state, setState] = useState<"idle" | "asking" | "loading" | "loaded" | "denied" | "unsupported">("idle");
   const [lakes, setLakes] = useState<NearbyLake[]>([]);
   const [locName, setLocName] = useState<string | null>(null);
+  const t = useT();
 
   const findNearby = () => {
     if (!("geolocation" in navigator)) {
@@ -70,28 +72,30 @@ export function NearYou() {
           <MapPin className="h-4 w-4 text-white" />
         </div>
         <div className="flex-1">
-          <div className="text-base font-semibold text-deep">Lakes near you</div>
+          <div className="text-base font-semibold text-deep">{t("near.title")}</div>
           <div className="text-xs text-slate-500">
-            {state === "loaded" && locName ? `Around ${locName}` : "Share your location to find swimming spots nearby"}
+            {state === "loaded" && locName
+              ? t("near.around", { place: locName })
+              : t("near.subtitle")}
           </div>
         </div>
         {state !== "loaded" && (
           <button
             onClick={findNearby}
             disabled={state === "asking" || state === "loading"}
-            className="inline-flex items-center gap-1.5 rounded-full bg-water-500 hover:bg-water-600 disabled:opacity-70 text-white text-sm font-medium py-2 px-3.5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition"
+            className="inline-flex items-center gap-1.5 rounded-full bg-water-500 hover:bg-water-600 disabled:opacity-70 text-white text-sm font-medium py-2 px-3.5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
           >
             {state === "asking" || state === "loading"
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Locate className="h-4 w-4" />}
-            Find nearby
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <Locate className="h-4 w-4" aria-hidden="true" />}
+            {t("near.find")}
           </button>
         )}
       </div>
 
       {(state === "loaded") && lakes.length === 0 && (
         <div className="px-6 py-6 text-sm text-slate-500 text-center border-t border-water-100/50">
-          No tracked lakes within 500 km. Try opening the map to explore.
+          {t("near.empty")}
         </div>
       )}
 
@@ -116,7 +120,7 @@ export function NearYou() {
                       {l.name}
                     </span>
                     <span className="block text-xs text-slate-500">
-                      {l.country_code} · {l.distance_km.toFixed(0)} km away
+                      {l.country_code} · {t("near.kmAway", { km: l.distance_km.toFixed(0) })}
                     </span>
                   </span>
                   <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
@@ -129,12 +133,12 @@ export function NearYou() {
 
       {state === "denied" && (
         <div className="px-5 sm:px-7 pb-5 text-xs text-slate-500 border-t border-water-100/50 pt-4">
-          Location access was denied. Search by lake name above, or open the map to explore.
+          {t("near.denied")}
         </div>
       )}
       {state === "unsupported" && (
         <div className="px-5 sm:px-7 pb-5 text-xs text-slate-500 border-t border-water-100/50 pt-4">
-          Your browser doesn&apos;t support geolocation. Try the map instead.
+          {t("near.unsupported")}
         </div>
       )}
     </div>

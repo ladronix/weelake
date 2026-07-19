@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase";
-import { bucketForTemp } from "@/lib/temperature";
 import { TempPill } from "@/components/ui";
 import { ChevronRight } from "lucide-react";
+import { LakeCount, RegionHeading, RegionSummary } from "./country-grid-labels";
 
 const REGION_ORDER = ["Europe", "Americas", "Oceania", "Asia", "Africa"];
 
@@ -54,9 +54,11 @@ export async function CountryGrid() {
         return (
           <section key={region}>
             <div className="flex items-baseline justify-between gap-4 mb-4">
-              <h3 className="text-lg sm:text-xl font-semibold text-deep tracking-tight">{region}</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-deep tracking-tight">
+                <RegionHeading region={region} />
+              </h3>
               <div className="text-xs text-slate-500 tabular-nums">
-                {list.length} {list.length === 1 ? "country" : "countries"} · {totalLakes} lakes
+                <RegionSummary countryCount={list.length} lakeCount={totalLakes} />
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -65,10 +67,10 @@ export async function CountryGrid() {
                   <Link
                     key={c.code}
                     href={`/country/${c.code.toLowerCase()}`}
-                    className="group relative rounded-3xl bg-white/70 backdrop-blur-md border border-white/60 p-4 sm:p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] hover:shadow-[0_12px_40px_rgba(14,165,233,0.16)] hover:-translate-y-0.5 transition-all overflow-hidden"
+                    className="group relative rounded-3xl bg-white/70 backdrop-blur-md border border-white/60 p-4 sm:p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] hover:shadow-[0_12px_40px_rgba(14,165,233,0.16)] hover:-translate-y-0.5 transition-all overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="text-3xl leading-none">{c.emoji}</div>
+                      <div className="text-3xl leading-none" aria-hidden="true">{c.emoji}</div>
                       {c.avg != null && (
                         <TempPill temp={c.avg} size="xs" precision={0} className="!rounded-full" />
                       )}
@@ -77,8 +79,8 @@ export async function CountryGrid() {
                       {c.name}
                     </div>
                     <div className="mt-0.5 flex items-center justify-between text-xs text-slate-500">
-                      <span>{c.count} {c.count === 1 ? "lake" : "lakes"}</span>
-                      <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition" />
+                      <span><LakeCount n={c.count} /></span>
+                      <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition" aria-hidden="true" />
                     </div>
                   </Link>
                 );

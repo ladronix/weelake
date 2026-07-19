@@ -35,6 +35,29 @@ export function translate(
 }
 
 /**
+ * Localised plural lookup — appends `_<CLDR category>` to `baseKey`
+ * and falls back to `_other`.
+ *
+ * Example:
+ *   translatePlural("cs", "countries.countLake", 2)
+ *   → looks up "countries.countLake_few" (Czech "2 jezera")
+ *   → falls back to "countries.countLake_other" if missing.
+ */
+export function translatePlural(
+  locale: Locale,
+  baseKey: string,
+  count: number,
+  vars?: Record<string, string | number>,
+): string {
+  const pr = new Intl.PluralRules(locale);
+  const category = pr.select(count);
+  const merged = { ...(vars ?? {}), n: count };
+  const specific = translate(locale, `${baseKey}_${category}`, merged);
+  if (specific !== `${baseKey}_${category}`) return specific;
+  return translate(locale, `${baseKey}_other`, merged);
+}
+
+/**
  * React hook — returns a `t(key, vars?)` function bound to the user's
  * current locale (via `usePrefs`).
  */
@@ -42,6 +65,13 @@ export function useT() {
   const { prefs } = usePrefs();
   return (key: string, vars?: Record<string, string | number>) =>
     translate(prefs.lang, key, vars);
+}
+
+/** React hook — returns a plural-aware `p(baseKey, count, vars?)` helper. */
+export function useP() {
+  const { prefs } = usePrefs();
+  return (baseKey: string, count: number, vars?: Record<string, string | number>) =>
+    translatePlural(prefs.lang, baseKey, count, vars);
 }
 
 export { DEFAULT_LOCALE, SUPPORTED_LOCALES, detectSystemLocale } from "./config";
