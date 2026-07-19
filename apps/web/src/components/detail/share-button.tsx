@@ -2,12 +2,14 @@
 
 import { Share2, Check } from "lucide-react";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 
 export function ShareButton({ title }: { title: string }) {
   const [copied, setCopied] = useState(false);
 
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
+    track("lake.share", { title });
     if (navigator.share) {
       try {
         await navigator.share({ title: `${title} · V-Lake`, url });

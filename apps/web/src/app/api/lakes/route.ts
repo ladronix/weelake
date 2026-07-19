@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const supabase = createSupabaseServiceClient();
   let q = supabase
     .from("lakes")
-    .select("id, slug, name, name_local, country_code, lat, lng, area_km2, type, importance, lakes_current:lakes_current(temp_c, measured_at, source, quality)")
+    .select("id, slug, name, name_local, country_code, lat, lng, area_km2, type, importance, lakes_current:lakes_current(temp_c, measured_at, source, quality, quality_index, algae_risk, turbidity_ntu)")
     .order("importance", { ascending: false })
     .limit(limit);
 
@@ -35,6 +35,9 @@ export async function GET(req: NextRequest) {
       measured_at: cur?.measured_at ?? null,
       source: cur?.source ?? null,
       quality: cur?.quality ?? null,
+      quality_index: cur?.quality_index ?? null,
+      algae_risk: cur?.algae_risk ?? null,
+      turbidity_ntu: cur?.turbidity_ntu ?? null,
     };
   });
 

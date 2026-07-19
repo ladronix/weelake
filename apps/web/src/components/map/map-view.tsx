@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { bucketForTemp, formatTemp, relativeTime, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { IconButton, TempPill, GlassCard } from "@/components/ui";
 
 interface LakeMarker {
@@ -256,6 +257,7 @@ export function MapView() {
 
   const doLocate = useCallback(() => {
     if (!navigator.geolocation) return;
+    track("map.locate");
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const c = { lat: p.coords.latitude, lng: p.coords.longitude };
@@ -420,7 +422,7 @@ export function MapView() {
                     return (
                       <button
                         key={k}
-                        onClick={() => setBasemap(k)}
+                        onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
                         className={cn(
                           "rounded-2xl px-3 py-2 text-xs font-medium transition text-left flex items-center gap-2",
                           basemap === k

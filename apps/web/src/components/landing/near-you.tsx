@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Locate, MapPin, Loader2, ChevronRight } from "lucide-react";
 import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { track } from "@/lib/analytics";
 
 interface NearbyLake {
   id: string;
@@ -26,6 +27,7 @@ export function NearYou() {
       setState("unsupported");
       return;
     }
+    track("landing.nearby");
     setState("asking");
     navigator.geolocation.getCurrentPosition(
       async (pos) => {

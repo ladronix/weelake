@@ -12,6 +12,7 @@ import { bucketForTemp, formatTemp, assessSwim, relativeTime } from "@/lib/tempe
 import { HistoryChart } from "@/components/detail/history-chart";
 import { NearbyLakes } from "@/components/detail/nearby-lakes";
 import { ShareButton } from "@/components/detail/share-button";
+import { WaterQualityCard } from "@/components/detail/water-quality-card";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -283,6 +284,12 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                 </div>
               </div>
             )}
+
+            <WaterQualityCard
+              quality_index={current?.quality_index ?? null}
+              algae_risk={current?.algae_risk ?? null}
+              turbidity_ntu={current?.turbidity_ntu != null ? Number(current.turbidity_ntu) : null}
+            />
 
             <div className="rounded-4xl bg-white/80 backdrop-blur-md border border-white/60 p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)]">
               <div className="font-semibold text-deep">About</div>
