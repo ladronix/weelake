@@ -76,7 +76,7 @@ const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style:
   } },
 };
 
-type SortKey = "importance" | "warmest" | "coldest" | "name";
+type SortKey = "importance" | "warmest" | "coldest" | "name" | "distance" | "area";
 
 export function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -152,10 +152,27 @@ export function MapView() {
       case "warmest": arr = arr.slice().sort((a, b) => (b.temp_c ?? -999) - (a.temp_c ?? -999)); break;
       case "coldest": arr = arr.slice().sort((a, b) => (a.temp_c ??  999) - (b.temp_c ??  999)); break;
       case "name":    arr = arr.slice().sort((a, b) => a.name.localeCompare(b.name)); break;
-      default:        arr = arr.slice().sort((a, b) => b.importance - a.importance);
+      case "area":    arr = arr.slice().sort((a, b) => (b.area_km2 ?? 0) - (a.area_km2 ?? 0)); break;
+      case "distance": {
+        if (userLoc) {
+          const dist = (l: LakeMarker) => {
+            const dLat = (l.lat - userLoc.lat) * Math.PI / 180;
+            const dLng = (l.lng - userLoc.lng) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(l.lat * Math.PI / 180) * Math.cos(userLoc.lat * Math.PI / 180) *
+              Math.sin(dLng / 2) ** 2;
+            return 12742 * Math.asin(Math.sqrt(a)); // km
+          };
+          arr = arr.slice().sort((a, b) => dist(a) - dist(b));
+        } else {
+          arr = arr.slice().sort((a, b) => b.importance - a.importance);
+        }
+        break;
+      }
+      default: arr = arr.slice().sort((a, b) => b.importance - a.importance);
     }
     return arr;
-  }, [lakes, countryFilter, typeFilter, tempRange, query, sortBy, visibleOnly, bounds]);
+  }, [lakes, countryFilter, typeFilter, tempRange, query, sortBy, visibleOnly, bounds, userLoc]);
 
   const countries = useMemo(
     () => Array.from(new Set(lakes.map((l) => l.country_code))).sort(),
@@ -405,6 +422,7 @@ export function MapView() {
           tempRange={tempRange} setTempRange={setTempRange}
           sortBy={sortBy} setSortBy={setSortBy}
           onOpen={openLake}
+          hasLocation={!!userLoc}
         />
       </aside>
 
@@ -668,6 +686,7 @@ function SidebarContent(props: {
   tempRange: [number, number]; setTempRange: (v: [number, number]) => void;
   sortBy: SortKey; setSortBy: (v: SortKey) => void;
   onOpen: (l: LakeMarker) => void;
+  hasLocation: boolean;
 }) {
   const {
     filtered, countries, types,
@@ -676,6 +695,7 @@ function SidebarContent(props: {
     typeFilter, setTypeFilter,
     tempRange, setTempRange,
     sortBy, setSortBy,
+    hasLocation,
     onOpen,
   } = props;
 
@@ -769,23 +789,21 @@ function SidebarContent(props: {
           </div>
         </label>
 
-        <div className="flex items-center gap-1 text-xs flex-wrap">
-          <span className="text-slate-500 font-medium mr-1">Sort:</span>
-          {(["importance", "warmest", "coldest", "name"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setSortBy(s)}
-              className={cn(
-                "rounded-full px-2.5 py-1 font-medium transition",
-                sortBy === s
-                  ? "bg-water-500 text-white shadow"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-              )}
-            >
-              {s === "importance" ? "Top" : s[0].toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
+        <label className="block text-xs">
+          <span className="text-slate-500 font-medium">Sort by</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-2 outline-none focus:ring-2 focus:ring-water-400 text-sm font-medium text-deep"
+          >
+            <option value="importance">⭐ Featured</option>
+            <option value="warmest">🔥 Warmest</option>
+            <option value="coldest">❄ Coldest</option>
+            <option value="area">🌊 Biggest</option>
+            <option value="name">🔤 Name (A→Z)</option>
+            {hasLocation && <option value="distance">📍 Nearest to me</option>}
+          </select>
+        </label>
       </div>
 
       <ul className="flex-1 overflow-y-auto divide-y divide-water-100/50 no-scrollbar">
@@ -1128,7 +1146,13 @@ function MobileFilterModal(props: {
         <section>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Sort by</div>
           <div className="flex flex-wrap gap-2">
-            {(["importance", "warmest", "coldest", "name"] as const).map((s) => (
+            {([
+              ["importance", "⭐ Featured"],
+              ["warmest",    "🔥 Warmest"],
+              ["coldest",    "❄ Coldest"],
+              ["area",       "🌊 Biggest"],
+              ["name",       "🔤 Name"],
+            ] as const).map(([s, label]) => (
               <button
                 key={s}
                 onClick={() => setSortBy(s)}
@@ -1139,7 +1163,7 @@ function MobileFilterModal(props: {
                     : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
                 )}
               >
-                {s === "importance" ? "Featured" : s[0].toUpperCase() + s.slice(1)}
+                {label}
               </button>
             ))}
           </div>

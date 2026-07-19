@@ -89,7 +89,7 @@ export function MiniMapPreview() {
       href="/map"
       className="group relative block rounded-4xl overflow-hidden h-[380px] sm:h-[480px] border border-water-200/40 shadow-[0_20px_60px_rgba(14,165,233,0.15)] hover:shadow-[0_28px_80px_rgba(14,165,233,0.22)] transition-shadow"
     >
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="absolute inset-0 w-full h-full" />
 
       {/* Colour-boost overlay for the water theme */}
       <div
