@@ -65,7 +65,12 @@ Use one of these — copy the prompt into your favourite video model
    ffmpeg -i apps/web/public/videos/hero-lake.mp4 -vframes 1 -q:v 2 \
           apps/web/public/videos/hero-lake-poster.jpg
    ```
-3. Commit the files, deploy — the hero will detect them automatically.
+3. **Enable the video via env var** — the SVG hero is on by default,
+   the video is opt-in to keep dev consoles quiet:
+   ```
+   NEXT_PUBLIC_HERO_VIDEO=1
+   ```
+4. Commit the files, redeploy — the hero will mount the video automatically.
 
 ## Free alternatives
 

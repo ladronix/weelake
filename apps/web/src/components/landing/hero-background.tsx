@@ -8,25 +8,24 @@ import { useEffect, useRef, useState } from "react";
  * Layered backdrop (all optional, non-blocking):
  *   • Solid water gradient
  *   • Animated blobs and SVG mountain silhouette with looping waves
- *   • Optional /videos/hero-lake.mp4 loop — invisible if missing
+ *   • Optional /videos/hero-lake.mp4 loop (opt-in via NEXT_PUBLIC_HERO_VIDEO=1)
  *
- * We do NOT preflight the video with fetch (that emits a noisy 404 in
- * DevTools). Instead we mount the <video> tag and let it fail silently
- * via onError.
+ * The video is opt-in to avoid noisy 404s during development.
+ * See docs/HERO-VIDEO.md to generate one and enable it.
  */
 export function HeroBackground() {
-  const [videoOk, setVideoOk] = useState(true);
+  const wantsVideo = process.env.NEXT_PUBLIC_HERO_VIDEO === "1";
+  const [videoOk, setVideoOk] = useState(wantsVideo);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    // Some browsers still log a "media resource" warning even with onError.
-    // We wrap it: if the video hasn't fired canplay in 3s, assume it's missing.
+    if (!wantsVideo) return;
     const t = setTimeout(() => {
       if (!videoLoaded) setVideoOk(false);
-    }, 3000);
+    }, 3500);
     return () => clearTimeout(t);
-  }, [videoLoaded]);
+  }, [videoLoaded, wantsVideo]);
 
   return (
     <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">

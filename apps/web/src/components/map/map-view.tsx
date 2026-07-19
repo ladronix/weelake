@@ -29,6 +29,7 @@ interface LakeMarker {
   temp_c: number | null;
   measured_at: string | null;
   source: string | null;
+  photo_url?: string | null;
 }
 
 type BasemapKey = "positron" | "voyager" | "terrain" | "dark" | "satellite";
@@ -504,9 +505,10 @@ export function MapView() {
             />
             {showLayerMenu && (
               <GlassCard variant="light" className="absolute right-0 top-12 w-64 p-3 z-50">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Basemap</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(Object.keys(BASEMAPS) as BasemapKey[]).map((k) => {
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Map style</div>
+                {/* Group 1: schematic road maps */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["positron", "voyager", "dark"] as BasemapKey[]).map((k) => {
                     const B = BASEMAPS[k];
                     const Icon = B.icon;
                     return (
@@ -514,18 +516,42 @@ export function MapView() {
                         key={k}
                         onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
                         className={cn(
-                          "rounded-2xl px-3 py-2 text-xs font-medium transition text-left flex items-center gap-2",
+                          "rounded-2xl px-2 py-2 text-[11px] font-medium transition flex flex-col items-center gap-1",
                           basemap === k
                             ? "bg-water-500 text-white shadow"
                             : "bg-water-50 text-slate-700 hover:bg-water-100",
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon className="h-4 w-4" />
                         {B.label}
                       </button>
                     );
                   })}
                 </div>
+                <div className="mt-1.5 text-[9px] text-slate-400 px-1">Roads</div>
+                {/* Group 2: photo / relief */}
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  {(["terrain", "satellite"] as BasemapKey[]).map((k) => {
+                    const B = BASEMAPS[k];
+                    const Icon = B.icon;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
+                        className={cn(
+                          "rounded-2xl px-3 py-2 text-xs font-medium transition flex items-center gap-2",
+                          basemap === k
+                            ? "bg-water-500 text-white shadow"
+                            : "bg-water-50 text-slate-700 hover:bg-water-100",
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {B.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-1.5 text-[9px] text-slate-400 px-1">Nature</div>
                 <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Layers</div>
                 <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
                   <span className="flex items-center gap-2 text-sm text-slate-700">
@@ -581,8 +607,11 @@ export function MapView() {
           />
         </div>
 
-        {/* Temperature legend */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 flex items-center gap-2 text-[11px] font-medium text-slate-700 hidden sm:flex border border-white/60">
+        {/* Temperature legend — bottom-left, hidden when the sheet is up */}
+        <div className={cn(
+          "absolute bottom-4 left-4 z-10 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 items-center gap-2 text-[11px] font-medium text-slate-700 border border-white/60",
+          "hidden md:flex",
+        )}>
           <Waves className="h-3.5 w-3.5 text-water-600" />
           <span className="tabular-nums">-5°</span>
           <span
@@ -772,15 +801,36 @@ function SidebarContent(props: {
               onClick={() => onOpen(l)}
               className="w-full text-left group flex items-center gap-3 px-4 py-3 hover:bg-water-50/70 transition"
             >
-              <TempPill temp={l.temp_c} size="lg" className="!rounded-2xl shrink-0" />
+              <div className="relative h-14 w-14 rounded-2xl overflow-hidden bg-water-100 shrink-0 shadow-sm">
+                {l.photo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={l.photo_url}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="lazy"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-water-200 to-water-400" />
+                )}
+                <div className="absolute bottom-1 left-1 right-1 flex justify-start">
+                  <TempPill temp={l.temp_c} size="xs" className="!ring-2 !ring-white shadow" />
+                </div>
+              </div>
               <span className="flex-1 min-w-0">
                 <span className="block font-medium text-deep truncate">{l.name}</span>
                 <span className="block text-xs text-slate-500 truncate">
                   {l.country_code} · {l.type}
                   {l.area_km2 && ` · ${Number(l.area_km2).toFixed(1)} km²`}
                 </span>
+                {l.measured_at && (
+                  <span className="block text-[10px] text-slate-400 mt-0.5">
+                    Updated {relativeTime(l.measured_at)}
+                  </span>
+                )}
               </span>
-              <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition" />
+              <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
             </button>
           </li>
         ))}
@@ -860,13 +910,34 @@ function MobileBottomSheet({
                 onClick={() => onOpen(l)}
                 className="w-full text-left group flex items-center gap-3 px-4 py-3 hover:bg-water-50/70 active:bg-water-50 transition"
               >
-                <TempPill temp={l.temp_c} size="md" className="!rounded-2xl shrink-0" />
+                <div className="relative h-12 w-12 rounded-2xl overflow-hidden bg-water-100 shrink-0 shadow-sm">
+                  {l.photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={l.photo_url}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      loading="lazy"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-water-200 to-water-400" />
+                  )}
+                  <div className="absolute bottom-0.5 left-0.5">
+                    <TempPill temp={l.temp_c} size="xs" className="!ring-2 !ring-white shadow-sm" />
+                  </div>
+                </div>
                 <span className="flex-1 min-w-0">
                   <span className="block font-medium text-deep truncate text-sm">{l.name}</span>
                   <span className="block text-[11px] text-slate-500 truncate">
                     {l.country_code} · {l.type}
                     {l.area_km2 && ` · ${Number(l.area_km2).toFixed(1)} km²`}
                   </span>
+                  {l.measured_at && (
+                    <span className="block text-[10px] text-slate-400">
+                      Updated {relativeTime(l.measured_at)}
+                    </span>
+                  )}
                 </span>
                 <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
               </button>
@@ -900,75 +971,111 @@ function MobileFilterModal(props: {
   } = props;
 
   return (
-    <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white">
-      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-water-100/70">
-        <div className="text-lg font-semibold text-deep">Filters</div>
+    <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white/95 backdrop-blur-xl safe-t">
+      <div className="shrink-0 flex items-center justify-between px-5 pt-4 pb-3 border-b border-water-100/70">
+        <div>
+          <div className="text-lg font-semibold text-deep leading-tight">Filters</div>
+          <div className="text-xs text-slate-500">
+            {count} {count === 1 ? "lake" : "lakes"} match
+          </div>
+        </div>
         <button
           onClick={onClose}
-          className="h-10 w-10 rounded-full bg-water-50 flex items-center justify-center text-water-700"
+          className="h-11 w-11 rounded-full bg-water-50 flex items-center justify-center text-water-700 hover:bg-water-100 transition"
           aria-label="Close filters"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-7">
         <section>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Water temperature</div>
-          <div className="text-sm text-deep font-medium mb-2 tabular-nums">
-            {tempRange[0]}°C — {tempRange[1]}°C
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
+            <span>Water temperature</span>
+            <span className="text-deep font-bold tabular-nums normal-case">
+              {tempRange[0]}° – {tempRange[1]}°C
+            </span>
           </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range" min={-5} max={35} step={1}
-              value={tempRange[0]}
-              onChange={(e) => setTempRange([Math.min(parseInt(e.target.value), tempRange[1] - 1), tempRange[1]])}
-              className="flex-1 accent-water-500"
-            />
-            <input
-              type="range" min={-5} max={35} step={1}
-              value={tempRange[1]}
-              onChange={(e) => setTempRange([tempRange[0], Math.max(parseInt(e.target.value), tempRange[0] + 1)])}
-              className="flex-1 accent-water-500"
-            />
+          <div className="rounded-3xl bg-water-50/70 border border-water-100 px-4 py-3">
+            <div className="flex items-center justify-between text-[10px] font-medium text-slate-500 mb-1">
+              <span>Min</span><span>Max</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="range" min={-5} max={35} step={1}
+                value={tempRange[0]}
+                onChange={(e) => setTempRange([Math.min(parseInt(e.target.value), tempRange[1] - 1), tempRange[1]])}
+                className="flex-1 accent-water-500 h-2"
+                aria-label={`Minimum temperature ${tempRange[0]}°C`}
+              />
+              <input
+                type="range" min={-5} max={35} step={1}
+                value={tempRange[1]}
+                onChange={(e) => setTempRange([tempRange[0], Math.max(parseInt(e.target.value), tempRange[0] + 1)])}
+                className="flex-1 accent-water-500 h-2"
+                aria-label={`Maximum temperature ${tempRange[1]}°C`}
+              />
+            </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap gap-2">
             {[
               { label: "❄ Cold-plunge", range: [0, 12] as [number, number] },
-              { label: "🌊 Fresh", range: [12, 18] as [number, number] },
-              { label: "☀️ Pleasant", range: [18, 24] as [number, number] },
-              { label: "🔥 Warm", range: [22, 35] as [number, number] },
-            ].map((p) => (
-              <button
-                key={p.label}
-                onClick={() => setTempRange(p.range)}
-                className="rounded-full px-3 py-1.5 text-xs bg-water-50 hover:bg-water-100 text-slate-700 border border-water-100 transition"
-              >
-                {p.label}
-              </button>
-            ))}
+              { label: "🌊 Fresh",       range: [12, 18] as [number, number] },
+              { label: "☀️ Pleasant",    range: [18, 24] as [number, number] },
+              { label: "🔥 Warm",        range: [22, 35] as [number, number] },
+            ].map((p) => {
+              const active = tempRange[0] === p.range[0] && tempRange[1] === p.range[1];
+              return (
+                <button
+                  key={p.label}
+                  onClick={() => setTempRange(p.range)}
+                  className={cn(
+                    "rounded-full px-4 py-2 text-sm font-medium border transition",
+                    active
+                      ? "bg-water-500 text-white border-water-600 shadow"
+                      : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
           </div>
         </section>
 
         <section>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Country</div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
+            <span>Country</span>
+            {countryFilter !== "all" && (
+              <button
+                onClick={() => setCountryFilter("all")}
+                className="text-water-600 font-medium normal-case text-[11px] hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setCountryFilter("all")}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-medium transition",
-                countryFilter === "all" ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                "rounded-full px-4 py-2 text-sm font-medium border transition",
+                countryFilter === "all"
+                  ? "bg-water-500 text-white border-water-600 shadow"
+                  : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
               )}
             >
-              All countries
+              All
             </button>
             {countries.map((c) => (
               <button
                 key={c}
                 onClick={() => setCountryFilter(c)}
                 className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition tabular-nums",
-                  countryFilter === c ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                  "rounded-full px-4 py-2 text-sm font-medium border transition tabular-nums",
+                  countryFilter === c
+                    ? "bg-water-500 text-white border-water-600 shadow"
+                    : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
                 )}
               >
                 {c}
@@ -978,24 +1085,38 @@ function MobileFilterModal(props: {
         </section>
 
         <section>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Type</div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
+            <span>Type of water</span>
+            {typeFilter !== "all" && (
+              <button
+                onClick={() => setTypeFilter("all")}
+                className="text-water-600 font-medium normal-case text-[11px] hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setTypeFilter("all")}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-medium transition capitalize",
-                typeFilter === "all" ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                "rounded-full px-4 py-2 text-sm font-medium border transition capitalize",
+                typeFilter === "all"
+                  ? "bg-water-500 text-white border-water-600 shadow"
+                  : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
               )}
             >
-              All types
+              All
             </button>
             {types.map((t) => (
               <button
                 key={t}
                 onClick={() => setTypeFilter(t)}
                 className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition capitalize",
-                  typeFilter === t ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                  "rounded-full px-4 py-2 text-sm font-medium border transition capitalize",
+                  typeFilter === t
+                    ? "bg-water-500 text-white border-water-600 shadow"
+                    : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
                 )}
               >
                 {t}
@@ -1006,14 +1127,16 @@ function MobileFilterModal(props: {
 
         <section>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Sort by</div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {(["importance", "warmest", "coldest", "name"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setSortBy(s)}
                 className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition",
-                  sortBy === s ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                  "rounded-full px-4 py-2 text-sm font-medium border transition",
+                  sortBy === s
+                    ? "bg-water-500 text-white border-water-600 shadow"
+                    : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
                 )}
               >
                 {s === "importance" ? "Featured" : s[0].toUpperCase() + s.slice(1)}
@@ -1023,16 +1146,19 @@ function MobileFilterModal(props: {
         </section>
       </div>
 
-      <div className="shrink-0 border-t border-water-100/70 p-4 flex gap-2 safe-b bg-white/95 backdrop-blur">
+      <div
+        className="shrink-0 border-t border-water-100/70 px-4 pt-3 pb-4 flex gap-2 bg-white"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+      >
         <button
           onClick={clearAll}
-          className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-3 px-5 transition"
+          className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-semibold py-3.5 px-6 transition"
         >
           Reset
         </button>
         <button
           onClick={onClose}
-          className="flex-1 rounded-full bg-water-500 hover:bg-water-600 text-white font-semibold py-3 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2"
+          className="flex-1 rounded-full bg-water-500 hover:bg-water-600 text-white font-semibold py-3.5 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2"
         >
           Show {count} {count === 1 ? "lake" : "lakes"} on map
         </button>
@@ -1046,6 +1172,13 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
   const bucket = bucketForTemp(lake.temp_c);
   const swim = assessSwim({ water_c: lake.temp_c });
 
+  // Close on Escape.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="absolute left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 sm:w-[380px] z-40 rounded-4xl overflow-hidden bg-white/95 backdrop-blur-xl shadow-[0_20px_60px_rgba(14,165,233,0.25)] border border-white/60 safe-b">
       <div
@@ -1053,18 +1186,20 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
         style={{ background: `linear-gradient(135deg, ${bucket.color}, #0369A1)` }}
       >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-3 right-3 rounded-full p-1.5 bg-white/20 hover:bg-white/30 text-white transition"
-          aria-label="Close"
+          className="absolute top-2 right-2 z-10 rounded-full h-9 w-9 flex items-center justify-center bg-white/25 hover:bg-white/40 text-white transition backdrop-blur"
+          aria-label="Close details"
+          title="Close"
         >
-          <X className="h-4 w-4" />
+          <X className="h-5 w-5" />
         </button>
-        <div className="text-[10px] uppercase tracking-wider opacity-90">
+        <div className="text-[10px] uppercase tracking-wider opacity-90 pr-10">
           {lake.country_code} · {lake.type}
         </div>
-        <div className="mt-1 text-xl font-semibold leading-tight">{lake.name}</div>
+        <div className="mt-1 text-xl font-semibold leading-tight pr-10">{lake.name}</div>
         {lake.name_local && lake.name_local !== lake.name && (
-          <div className="text-xs opacity-90">{lake.name_local}</div>
+          <div className="text-xs opacity-90 pr-10">{lake.name_local}</div>
         )}
         <div className="mt-4 flex items-end gap-4">
           <div className="text-5xl font-semibold tabular-nums leading-none">{formatTemp(lake.temp_c, 1)}</div>
