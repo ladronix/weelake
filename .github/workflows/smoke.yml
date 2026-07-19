@@ -1,5 +1,8 @@
 name: Smoke test (production)
 
+# Only runs on manual dispatch (not auto after CI) — because the domain
+# is not yet configured until Vercel is wired up. Once weelake.com is live,
+# switch on the workflow_run trigger below.
 on:
   workflow_dispatch:
     inputs:
@@ -7,14 +10,9 @@ on:
         description: "Deployed site URL to probe"
         required: false
         default: "https://weelake.com"
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
 
 jobs:
   smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
