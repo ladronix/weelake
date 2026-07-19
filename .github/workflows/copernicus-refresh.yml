@@ -1,0 +1,49 @@
+name: Copernicus LSWT refresh
+
+on:
+  schedule:
+    # 04:00 UTC daily — runs one hour after the Open-Meteo Node worker,
+    # so any lake for which Copernicus has satellite data gets its
+    # `source` upgraded from openmeteo_* to copernicus_cds today.
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: copernicus-refresh
+  cancel-in-progress: false
+
+jobs:
+  copernicus-refresh:
+    name: Refresh Copernicus LSWT
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # CDS Beta (post-2024 migration): store the key without ':' or user id;
+      # cdsapi will send it as an API key against api.cds.climate.copernicus.eu/api.
+      CDSAPI_URL: https://cds.climate.copernicus.eu/api
+      CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+      # Supabase upserts happen with the service-role key.
+      SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system deps (HDF5 + netCDF)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libhdf5-dev libnetcdf-dev
+
+      - name: Install Python deps
+        working-directory: services/copernicus-fetcher
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fetch latest 3 days of LSWT and upsert
+        working-directory: services/copernicus-fetcher
+        run: python fetch.py --days 3
