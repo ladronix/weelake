@@ -8,12 +8,12 @@ import { Nav } from "@/components/layout/nav";
 import { Footer } from "@/components/layout/footer";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 import { fetchWeather, fetchMarineWaterTemp, conditionFromCode } from "@/lib/openmeteo";
-import { bucketForTemp, formatTemp, assessSwim, relativeTime } from "@/lib/temperature";
+import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { HistoryChart } from "@/components/detail/history-chart";
 import { NearbyLakes } from "@/components/detail/nearby-lakes";
 import { ShareButton } from "@/components/detail/share-button";
 import { WaterQualityCard } from "@/components/detail/water-quality-card";
-import { TLabel, PLabel } from "@/components/ui";
+import { TLabel, PLabel, RelativeTime } from "@/components/ui";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -185,13 +185,14 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                       {formatTemp(temp_c, 1)}
                     </div>
                     <div className="mt-2 text-sm sm:text-lg opacity-95 font-medium">
-                      {assessment.headline}
+                      <TLabel tKey={assessment.headlineKey} />
                     </div>
                   </div>
                   <div className="text-[11px] sm:text-xs opacity-85 space-y-0.5">
                     {measured_at && (
                       <div>
-                        <TLabel tKey="detail.updated" vars={{ ago: relativeTime(measured_at) }} />
+                        <TLabel tKey="detail.updatedPrefix" />{" "}
+                        <RelativeTime iso={measured_at} />
                       </div>
                     )}
                     {source && (
@@ -209,12 +210,14 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                   <div className="mt-6 space-y-1.5 text-sm">
                     {assessment.warnings.map((w, i) => (
                       <div key={`w${i}`} className="flex items-start gap-2 bg-white/10 rounded-2xl px-3 py-1.5">
-                        <span className="mt-0.5">⚠</span><span>{w}</span>
+                        <span className="mt-0.5" aria-hidden="true">⚠</span>
+                        <span><TLabel tKey={w.key} vars={w.vars} /></span>
                       </div>
                     ))}
                     {assessment.reasons.map((r, i) => (
                       <div key={`r${i}`} className="flex items-start gap-2 opacity-90 px-3">
-                        <span className="mt-0.5">·</span><span>{r}</span>
+                        <span className="mt-0.5" aria-hidden="true">·</span>
+                        <span><TLabel tKey={r.key} vars={r.vars} /></span>
                       </div>
                     ))}
                   </div>

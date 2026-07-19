@@ -55,36 +55,40 @@ describe("assessSwim", () => {
     const r = assessSwim({ water_c: null });
     expect(r.verdict).toBe("unknown");
     expect(r.score).toBe(0);
+    expect(r.headlineKey).toBe("swim.headline.unknown");
   });
 
   it("flags cold-shock warning below 10°C", () => {
     const r = assessSwim({ water_c: 8 });
     expect(r.verdict).toBe("cold");
-    expect(r.warnings.some((w) => w.toLowerCase().includes("cold"))).toBe(true);
+    expect(r.warnings.some((w) => w.key === "swim.warning.coldShock")).toBe(true);
   });
 
   it("marks 22°C as great swimming", () => {
     const r = assessSwim({ water_c: 22.5 });
     expect(r.verdict).toBe("great");
     expect(r.score).toBeGreaterThan(80);
+    expect(r.headlineKey).toBe("swim.headline.great");
   });
 
   it("adds warning for algae risk above 30°C", () => {
     const r = assessSwim({ water_c: 31 });
     expect(r.verdict).toBe("hot");
-    expect(r.warnings.length).toBeGreaterThan(0);
+    expect(r.warnings.some((w) => w.key === "swim.warning.veryWarm")).toBe(true);
   });
 
   it("penalises strong wind", () => {
     const calm  = assessSwim({ water_c: 22, wind_kmh: 5 });
     const stormy = assessSwim({ water_c: 22, wind_kmh: 45 });
     expect(stormy.score).toBeLessThan(calm.score);
-    expect(stormy.warnings.some((w) => w.toLowerCase().includes("wind"))).toBe(true);
+    const windWarning = stormy.warnings.find((w) => w.key === "swim.warning.wind");
+    expect(windWarning).toBeDefined();
+    expect(windWarning?.vars?.wind).toBe(45);
   });
 
   it("warns on high UV", () => {
     const r = assessSwim({ water_c: 24, uv: 9 });
-    expect(r.warnings.some((w) => w.toLowerCase().includes("uv"))).toBe(true);
+    expect(r.warnings.some((w) => w.key === "swim.warning.uv")).toBe(true);
   });
 
   it("keeps score bounded to 0..100", () => {
@@ -94,31 +98,45 @@ describe("assessSwim", () => {
       expect(r.score).toBeLessThanOrEqual(100);
     }
   });
+
+  it("emits air-temperature reason with an `air` var when supplied", () => {
+    const r = assessSwim({ water_c: 22, air_c: 24 });
+    const airReason = r.reasons.find((x) => x.key === "swim.reason.air");
+    expect(airReason).toBeDefined();
+    expect(airReason?.vars?.air).toBe("24");
+  });
 });
 
-describe("relativeTime", () => {
+describe("relativeTime (Intl.RelativeTimeFormat)", () => {
   it("handles missing input", () => {
-    expect(relativeTime(null)).toBe("unknown");
-    expect(relativeTime(undefined)).toBe("unknown");
+    expect(relativeTime(null)).toBe("");
+    expect(relativeTime(undefined)).toBe("");
   });
 
-  it("returns 'just now' for very recent timestamps", () => {
-    const iso = new Date(Date.now() - 5_000).toISOString();
-    expect(relativeTime(iso)).toBe("just now");
-  });
-
-  it("returns minutes for < 1h", () => {
+  it("returns an English relative-time string for recent timestamps (en)", () => {
     const iso = new Date(Date.now() - 15 * 60_000).toISOString();
-    expect(relativeTime(iso)).toMatch(/min ago$/);
+    const s = relativeTime(iso, "en");
+    // "15 minutes ago" — allow either "15 min ago" or the full form
+    expect(s.toLowerCase()).toMatch(/ago/);
   });
 
-  it("returns hours for < 24h", () => {
+  it("returns hours for < 24h (en)", () => {
     const iso = new Date(Date.now() - 5 * 3600_000).toISOString();
-    expect(relativeTime(iso)).toMatch(/h ago$/);
+    const s = relativeTime(iso, "en");
+    expect(s.toLowerCase()).toMatch(/hour|hr/);
   });
 
-  it("returns days for < 30d", () => {
-    const iso = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
-    expect(relativeTime(iso)).toMatch(/d ago$/);
+  it("returns Czech text for cs locale", () => {
+    const iso = new Date(Date.now() - 5 * 3600_000).toISOString();
+    const s = relativeTime(iso, "cs");
+    // Czech: "před 5 hodinami" or similar
+    expect(s).toMatch(/hodin|před/);
+  });
+
+  it("returns German text for de locale", () => {
+    const iso = new Date(Date.now() - 5 * 3600_000).toISOString();
+    const s = relativeTime(iso, "de");
+    // German: "vor 5 Stunden"
+    expect(s.toLowerCase()).toMatch(/stunde|vor/);
   });
 });

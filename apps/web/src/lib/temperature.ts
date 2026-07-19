@@ -1,6 +1,17 @@
 /**
  * Weelake · temperature helpers
  * Windy-style color scale + swim safety verdict.
+ *
+ * Localisation contract
+ * ---------------------
+ * `assessSwim` and `relativeTime` are pure business logic and must not
+ * import React. They therefore return **i18n message keys** (plus any
+ * substitution `vars`) rather than plain English strings — the UI layer
+ * translates them via `useT()`. English fallbacks live in the JSON
+ * dictionaries. Adding a new bucket or warning means adding one key to
+ * each locale file; the compile-time key naming (`swim.warning.*`,
+ * `swim.reason.*`, `swim.headline.*`, `time.*`) makes those additions
+ * trivial to spot.
  */
 
 export interface TempBucket {
@@ -36,17 +47,28 @@ export function formatTemp(t: number | null | undefined, precision = 1): string 
 
 export type SwimVerdict = "great" | "good" | "ok" | "cold" | "hot" | "unknown";
 
+/** Localised message reference: an i18n key plus optional interpolation vars. */
+export interface TranslatableMessage {
+  key: string;
+  vars?: Record<string, string | number>;
+}
+
 export interface SwimAssessment {
   verdict: SwimVerdict;
   score: number;      // 0-100
-  headline: string;
-  reasons: string[];
-  warnings: string[];
+  /** i18n key for the one-line headline (e.g. 'swim.headline.good'). */
+  headlineKey: string;
+  /** Positive callouts to render as list items. */
+  reasons: TranslatableMessage[];
+  /** Warnings to render prominently (bg tint). */
+  warnings: TranslatableMessage[];
 }
 
 /**
  * Compute a swim-safety verdict from temperature and optional weather signals.
  * Rules are heuristic and conservative — always show the underlying data too.
+ *
+ * Returns message keys, not English text. See `swim.*` keys in the locale JSONs.
  */
 export function assessSwim(input: {
   water_c?: number | null;
@@ -59,14 +81,14 @@ export function assessSwim(input: {
     return {
       verdict: "unknown",
       score: 0,
-      headline: "No recent data",
-      reasons: ["No water temperature reading available."],
+      headlineKey: "swim.headline.unknown",
+      reasons: [{ key: "swim.reason.noData" }],
       warnings: [],
     };
   }
 
-  const reasons: string[] = [];
-  const warnings: string[] = [];
+  const reasons: TranslatableMessage[] = [];
+  const warnings: TranslatableMessage[] = [];
 
   let verdict: SwimVerdict = "ok";
   let score = 60;
@@ -74,79 +96,88 @@ export function assessSwim(input: {
   if (w < 10) {
     verdict = "cold";
     score = 20;
-    warnings.push("Cold-water shock risk. Only for trained swimmers.");
+    warnings.push({ key: "swim.warning.coldShock" });
   } else if (w < 15) {
     verdict = "cold";
     score = 40;
-    warnings.push("Cold: limit exposure. Wetsuit recommended.");
+    warnings.push({ key: "swim.warning.cold" });
   } else if (w < 18) {
     verdict = "ok";
     score = 60;
-    reasons.push("Refreshing but brisk.");
+    reasons.push({ key: "swim.reason.brisk" });
   } else if (w < 22) {
     verdict = "good";
     score = 80;
-    reasons.push("Pleasant for a swim.");
+    reasons.push({ key: "swim.reason.pleasant" });
   } else if (w < 26) {
     verdict = "great";
     score = 95;
-    reasons.push("Great swimming conditions.");
+    reasons.push({ key: "swim.reason.great" });
   } else if (w < 30) {
     verdict = "great";
     score = 90;
-    reasons.push("Very warm, ideal for kids.");
-    warnings.push("Warm water can promote algal blooms — check local advisories.");
+    reasons.push({ key: "swim.reason.veryWarm" });
+    warnings.push({ key: "swim.warning.algae" });
   } else {
     verdict = "hot";
     score = 55;
-    warnings.push("Very warm water: heightened algae / bacteria risk.");
+    warnings.push({ key: "swim.warning.veryWarm" });
   }
 
   if (typeof input.air_c === "number") {
     if (input.air_c < w - 5) {
-      warnings.push("Air is colder than water — chilly exit.");
+      warnings.push({ key: "swim.warning.airCold" });
       score -= 5;
     }
-    reasons.push(`Air ${input.air_c.toFixed(0)}°C.`);
+    reasons.push({ key: "swim.reason.air", vars: { air: input.air_c.toFixed(0) } });
   }
 
   if (typeof input.wind_kmh === "number") {
     if (input.wind_kmh > 30) {
-      warnings.push(`Strong wind (${Math.round(input.wind_kmh)} km/h) — watch waves.`);
+      warnings.push({ key: "swim.warning.wind", vars: { wind: Math.round(input.wind_kmh) } });
       score -= 10;
     } else if (input.wind_kmh < 8) {
-      reasons.push("Calm wind.");
+      reasons.push({ key: "swim.reason.calm" });
     }
   }
 
   if (typeof input.uv === "number" && input.uv >= 7) {
-    warnings.push(`High UV (index ${input.uv.toFixed(0)}) — sunscreen essential.`);
+    warnings.push({ key: "swim.warning.uv", vars: { uv: input.uv.toFixed(0) } });
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  const headline =
-    verdict === "great" ? "Perfect for a swim"
-    : verdict === "good" ? "Good for swimming"
-    : verdict === "ok"   ? "Swimmable, cool"
-    : verdict === "cold" ? "Cold — care needed"
-    : verdict === "hot"  ? "Warm — check advisories"
-    : "Unknown";
+  const headlineKey =
+    verdict === "great" ? "swim.headline.great"
+    : verdict === "good" ? "swim.headline.good"
+    : verdict === "ok"   ? "swim.headline.ok"
+    : verdict === "cold" ? "swim.headline.cold"
+    : verdict === "hot"  ? "swim.headline.hot"
+    : "swim.headline.unknown";
 
-  return { verdict, score, headline, reasons, warnings };
+  return { verdict, score, headlineKey, reasons, warnings };
 }
 
-export function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "unknown";
+/**
+ * Return a localised relative-time string using `Intl.RelativeTimeFormat`.
+ * When `locale` is omitted we fall back to the runtime default (server) or
+ * `navigator.language` (client). Callers with a stable locale (e.g. from
+ * `usePrefs`) should pass it explicitly for consistency.
+ */
+export function relativeTime(iso: string | null | undefined, locale?: string): string {
+  if (!iso) return "";
+  const effective = locale ?? (typeof navigator !== "undefined" ? navigator.language : "en");
+  const rtf = new Intl.RelativeTimeFormat(effective, { numeric: "auto" });
   const now = Date.now();
   const then = new Date(iso).getTime();
-  const diff = Math.max(0, now - then);
-  const min = Math.round(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
+  const diffSec = Math.round((then - now) / 1000);
+  const abs = Math.abs(diffSec);
+  if (abs < 60) return rtf.format(diffSec, "second");
+  const min = Math.round(diffSec / 60);
+  if (Math.abs(min) < 60) return rtf.format(min, "minute");
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr} h ago`;
+  if (Math.abs(hr) < 24) return rtf.format(hr, "hour");
   const d = Math.round(hr / 24);
-  if (d < 30) return `${d} d ago`;
-  return new Date(iso).toLocaleDateString();
+  if (Math.abs(d) < 30) return rtf.format(d, "day");
+  return new Date(iso).toLocaleDateString(effective);
 }

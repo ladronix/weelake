@@ -10,11 +10,11 @@ import {
   Thermometer, Waves, Filter, ChevronRight, ChevronLeft, ChevronUp,
   Sparkles, Navigation2, Map as MapIcon, Mountain, Satellite as SatIcon, Moon, Sun,
 } from "lucide-react";
-import { bucketForTemp, formatTemp, relativeTime, assessSwim } from "@/lib/temperature";
+import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useT, useP } from "@/lib/i18n";
-import { IconButton, TempPill, GlassCard } from "@/components/ui";
+import { IconButton, TempPill, GlassCard, RelativeTime } from "@/components/ui";
 
 interface LakeMarker {
   id: string;
@@ -848,7 +848,7 @@ function SidebarContent(props: {
                 </span>
                 {l.measured_at && (
                   <span className="block text-[10px] text-slate-400 mt-0.5">
-                    Updated {relativeTime(l.measured_at)}
+                    {t("map.updatedPrefix")} <RelativeTime iso={l.measured_at} />
                   </span>
                 )}
               </span>
@@ -959,7 +959,7 @@ function MobileBottomSheet({
                   </span>
                   {l.measured_at && (
                     <span className="block text-[10px] text-slate-400">
-                      Updated {relativeTime(l.measured_at)}
+                      {t("map.updatedPrefix")} <RelativeTime iso={l.measured_at} />
                     </span>
                   )}
                 </span>
@@ -1236,8 +1236,8 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
         <div className="mt-4 flex items-end gap-4">
           <div className="text-5xl font-semibold tabular-nums leading-none">{formatTemp(lake.temp_c, 1)}</div>
           <div className="text-xs opacity-90 pb-1">
-            <div className="font-semibold">{swim.headline}</div>
-            <div>{lake.measured_at ? t("map.updatedAgo", { ago: relativeTime(lake.measured_at) }) : t("map.noRecent")}</div>
+            <div className="font-semibold">{t(swim.headlineKey)}</div>
+            <div>{lake.measured_at ? <><span>{t("map.updatedPrefix")}</span> <RelativeTime iso={lake.measured_at} /></> : t("map.noRecent")}</div>
           </div>
         </div>
       </div>
