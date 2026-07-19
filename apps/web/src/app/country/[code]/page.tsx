@@ -4,6 +4,7 @@ import { Nav } from "@/components/layout/nav";
 import { Footer } from "@/components/layout/footer";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { TLabel, PLabel } from "@/components/ui";
 
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
@@ -48,20 +49,24 @@ export default async function CountryPage({ params }: { params: Promise<{ code: 
     <>
       <Nav />
       <main className="section py-8">
-        <Link href="/" className="text-sm text-water-700 hover:text-water-900">← Back</Link>
+        <Link href="/" className="text-sm text-water-700 hover:text-water-900">
+          <TLabel tKey="country.back" />
+        </Link>
 
         <div className="mt-4 flex items-center gap-4">
-          <div className="text-6xl">{country.emoji}</div>
+          <div className="text-6xl" aria-hidden="true">{country.emoji}</div>
           <div>
             <h1 className="text-3xl sm:text-4xl font-semibold text-deep tracking-tight">{country.name}</h1>
-            <div className="text-slate-600">{lakes.length} lakes tracked</div>
+            <div className="text-slate-600">
+              <PLabel baseKey="country.lakesTracked" count={lakes.length} />
+            </div>
           </div>
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-3">
-          <Stat label="Average" value={avg != null ? formatTemp(avg) : "—"} />
-          <Stat label="Warmest" value={max != null ? formatTemp(max) : "—"} />
-          <Stat label="Coldest" value={min != null ? formatTemp(min) : "—"} />
+          <Stat labelKey="country.average" value={avg != null ? formatTemp(avg) : "—"} />
+          <Stat labelKey="country.warmest" value={max != null ? formatTemp(max) : "—"} />
+          <Stat labelKey="country.coldest" value={min != null ? formatTemp(min) : "—"} />
         </div>
 
         <ul className="mt-8 grid gap-2 sm:grid-cols-2">
@@ -91,10 +96,12 @@ export default async function CountryPage({ params }: { params: Promise<{ code: 
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ labelKey, value }: { labelKey: string; value: string }) {
   return (
     <div className="glass rounded-3xl p-4 text-center">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-[10px] uppercase tracking-wide text-slate-500">
+        <TLabel tKey={labelKey} />
+      </div>
       <div className="text-2xl font-semibold text-deep tabular-nums">{value}</div>
     </div>
   );

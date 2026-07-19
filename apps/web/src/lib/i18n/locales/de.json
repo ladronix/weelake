@@ -101,6 +101,8 @@
   "map.showOnMap": "Auf Karte anzeigen",
   "map.showAll": "Alle Seen anzeigen",
   "map.onlyInView": "Nur Seen im aktuellen Ausschnitt",
+  "map.roads": "Straßen",
+  "map.nature": "Natur",
 
   "filter.title": "Filter",
   "filter.temperature": "Wassertemperatur",
@@ -121,6 +123,9 @@
   "sort.name": "Name",
   "sort.distance": "Am nächsten",
   "sort.area": "Am größten",
+  "sort.nameFull": "Name (A→Z)",
+  "sort.distanceFull": "Am nächsten zu mir",
+  "map.noMatches": "Keine Seen entsprechen deinen Filtern.",
 
   "footer.tagline": "Globale Seetemperaturen — live, schön, kostenlos.",
   "footer.product": "Produkt",
@@ -133,5 +138,12 @@
   "footer.about": "Über",
   "footer.privacy": "Datenschutz",
   "footer.attribution": "Attribution",
-  "footer.copyright": "© {year} V-Lake. Alle Daten den jeweiligen Quellen zugeordnet."
+  "footer.copyright": "© {year} V-Lake. Alle Daten den jeweiligen Quellen zugeordnet.",
+
+  "country.back": "← Zurück",
+  "country.lakesTracked_one": "{n} See verfolgt",
+  "country.lakesTracked_other": "{n} Seen verfolgt",
+  "country.average": "Durchschnitt",
+  "country.warmest": "Am wärmsten",
+  "country.coldest": "Am kältesten"
 }

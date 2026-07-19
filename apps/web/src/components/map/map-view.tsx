@@ -548,7 +548,7 @@ export function MapView() {
                     );
                   })}
                 </div>
-                <div className="mt-1.5 text-[9px] text-slate-400 px-1">Roads</div>
+                <div className="mt-1.5 text-[9px] text-slate-400 px-1">{t("map.roads")}</div>
                 {/* Group 2: photo / relief */}
                 <div className="mt-2 grid grid-cols-2 gap-1.5">
                   {(["terrain", "satellite"] as BasemapKey[]).map((k) => {
@@ -571,8 +571,8 @@ export function MapView() {
                     );
                   })}
                 </div>
-                <div className="mt-1.5 text-[9px] text-slate-400 px-1">Nature</div>
-                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Layers</div>
+                <div className="mt-1.5 text-[9px] text-slate-400 px-1">{t("map.nature")}</div>
+                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.layers")}</div>
                 <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
                   <span className="flex items-center gap-2 text-sm text-slate-700">
                     <Thermometer className="h-4 w-4 text-temp-hot" /> Heatmap
@@ -749,7 +749,7 @@ function SidebarContent(props: {
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <label>
-            <span className="text-slate-500 font-medium">Country</span>
+            <span className="text-slate-500 font-medium">{t("filter.country")}</span>
             <select
               value={countryFilter}
               onChange={(e) => setCountryFilter(e.target.value)}
@@ -793,18 +793,18 @@ function SidebarContent(props: {
         </label>
 
         <label className="block text-xs">
-          <span className="text-slate-500 font-medium">Sort by</span>
+          <span className="text-slate-500 font-medium">{t("filter.sortBy")}</span>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortKey)}
             className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-2 outline-none focus:ring-2 focus:ring-water-400 text-sm font-medium text-deep"
           >
-            <option value="importance">⭐ Featured</option>
-            <option value="warmest">🔥 Warmest</option>
-            <option value="coldest">❄ Coldest</option>
-            <option value="area">🌊 Biggest</option>
-            <option value="name">🔤 Name (A→Z)</option>
-            {hasLocation && <option value="distance">📍 Nearest to me</option>}
+            <option value="importance">⭐ {t("sort.top")}</option>
+            <option value="warmest">🔥 {t("sort.warmest")}</option>
+            <option value="coldest">❄ {t("sort.coldest")}</option>
+            <option value="area">🌊 {t("sort.area")}</option>
+            <option value="name">🔤 {t("sort.nameFull")}</option>
+            {hasLocation && <option value="distance">📍 {t("sort.distanceFull")}</option>}
           </select>
         </label>
       </div>
@@ -812,7 +812,7 @@ function SidebarContent(props: {
       <ul className="flex-1 overflow-y-auto divide-y divide-water-100/50 no-scrollbar">
         {filtered.length === 0 && (
           <li className="p-8 text-sm text-slate-500 text-center">
-            No lakes match your filters.
+            {t("map.noMatches")}
           </li>
         )}
         {filtered.slice(0, 500).map((l) => (
@@ -1014,7 +1014,7 @@ function MobileFilterModal(props: {
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-7">
         <section>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
-            <span>Water temperature</span>
+            <span>{t("filter.temperature")}</span>
             <span className="text-deep font-bold tabular-nums normal-case">
               {tempRange[0]}° – {tempRange[1]}°C
             </span>
@@ -1068,7 +1068,7 @@ function MobileFilterModal(props: {
 
         <section>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
-            <span>Country</span>
+            <span>{t("filter.country")}</span>
             {countryFilter !== "all" && (
               <button
                 onClick={() => setCountryFilter("all")}
@@ -1149,14 +1149,14 @@ function MobileFilterModal(props: {
         </section>
 
         <section>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Sort by</div>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">{t("filter.sortBy")}</div>
           <div className="flex flex-wrap gap-2">
             {([
-              ["importance", "⭐ Featured"],
-              ["warmest",    "🔥 Warmest"],
-              ["coldest",    "❄ Coldest"],
-              ["area",       "🌊 Biggest"],
-              ["name",       "🔤 Name"],
+              ["importance", `⭐ ${t("sort.top")}`],
+              ["warmest",    `🔥 ${t("sort.warmest")}`],
+              ["coldest",    `❄ ${t("sort.coldest")}`],
+              ["area",       `🌊 ${t("sort.area")}`],
+              ["name",       `🔤 ${t("sort.name")}`],
             ] as const).map(([s, label]) => (
               <button
                 key={s}

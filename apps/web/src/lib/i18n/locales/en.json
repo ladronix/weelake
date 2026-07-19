@@ -101,6 +101,8 @@
   "map.showOnMap": "Show on map",
   "map.showAll": "Show all lakes",
   "map.onlyInView": "Only show lakes in current view",
+  "map.roads": "Roads",
+  "map.nature": "Nature",
 
   "filter.title": "Filters",
   "filter.temperature": "Water temperature",
@@ -121,6 +123,9 @@
   "sort.name": "Name",
   "sort.distance": "Nearest",
   "sort.area": "Biggest",
+  "sort.nameFull": "Name (A→Z)",
+  "sort.distanceFull": "Nearest to me",
+  "map.noMatches": "No lakes match your filters.",
 
   "footer.tagline": "Global lake temperatures — live, beautiful, free.",
   "footer.product": "Product",
@@ -133,5 +138,12 @@
   "footer.about": "About",
   "footer.privacy": "Privacy",
   "footer.attribution": "Attribution",
-  "footer.copyright": "© {year} V-Lake. All data attributed to their respective sources."
+  "footer.copyright": "© {year} V-Lake. All data attributed to their respective sources.",
+
+  "country.back": "← Back",
+  "country.lakesTracked_one": "{n} lake tracked",
+  "country.lakesTracked_other": "{n} lakes tracked",
+  "country.average": "Average",
+  "country.warmest": "Warmest",
+  "country.coldest": "Coldest"
 }

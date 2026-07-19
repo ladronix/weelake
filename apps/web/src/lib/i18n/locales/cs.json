@@ -103,6 +103,8 @@
   "map.showOnMap": "Zobrazit na mapě",
   "map.showAll": "Zobrazit všechna jezera",
   "map.onlyInView": "Zobrazit pouze jezera v aktuálním výřezu",
+  "map.roads": "Silnice",
+  "map.nature": "Příroda",
 
   "filter.title": "Filtry",
   "filter.temperature": "Teplota vody",
@@ -123,6 +125,9 @@
   "sort.name": "Podle jména",
   "sort.distance": "Nejbližší",
   "sort.area": "Největší",
+  "sort.nameFull": "Podle jména (A→Z)",
+  "sort.distanceFull": "Nejbližší ke mně",
+  "map.noMatches": "Žádná jezera neodpovídají filtrům.",
 
   "footer.tagline": "Globální teploty jezer — živě, hezky, zdarma.",
   "footer.product": "Produkt",
@@ -135,5 +140,13 @@
   "footer.about": "O projektu",
   "footer.privacy": "Soukromí",
   "footer.attribution": "Uvedení zdrojů",
-  "footer.copyright": "© {year} V-Lake. Všechna data uvedena podle svých zdrojů."
+  "footer.copyright": "© {year} V-Lake. Všechna data uvedena podle svých zdrojů.",
+
+  "country.back": "← Zpět",
+  "country.lakesTracked_one": "{n} sledované jezero",
+  "country.lakesTracked_few": "{n} sledovaná jezera",
+  "country.lakesTracked_other": "{n} sledovaných jezer",
+  "country.average": "Průměr",
+  "country.warmest": "Nejteplejší",
+  "country.coldest": "Nejchladnější"
 }
