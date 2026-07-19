@@ -128,6 +128,9 @@ export function MapView() {
   const [tempRange, setTempRange] = useState<[number, number]>([-5, 35]);
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [swimFilter, setSwimFilter] = useState<"all" | "swimmable" | "warm" | "cold">("all");
+  const [sizeFilter, setSizeFilter] = useState<"all" | "small" | "medium" | "large">("all");
+  const [photoOnly, setPhotoOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("importance");
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
@@ -173,6 +176,24 @@ export function MapView() {
       if (l.temp_c != null) {
         if (l.temp_c < tempRange[0] || l.temp_c > tempRange[1]) return false;
       }
+      // Swim-safety filter: bucket the numeric temp into an intent tier.
+      // - 'swimmable' >= 15°C (fresh, pleasant, warm, hot)
+      // - 'warm'      >= 22°C
+      // - 'cold'      <  15°C
+      if (swimFilter !== "all" && l.temp_c != null) {
+        if (swimFilter === "swimmable" && l.temp_c < 15) return false;
+        if (swimFilter === "warm"      && l.temp_c < 22) return false;
+        if (swimFilter === "cold"      && l.temp_c >= 15) return false;
+      }
+      // Area size filter — small < 1 km², medium 1-10 km², large > 10 km².
+      if (sizeFilter !== "all") {
+        const a = l.area_km2 ?? 0;
+        if (sizeFilter === "small"  && !(a > 0 && a < 1)) return false;
+        if (sizeFilter === "medium" && !(a >= 1 && a <= 10)) return false;
+        if (sizeFilter === "large"  && !(a > 10)) return false;
+      }
+      // Photo-only filter — only lakes with a Wikimedia photo backfilled.
+      if (photoOnly && !l.photo_url) return false;
       if (q) {
         const hay = `${l.name} ${l.name_local ?? ""} ${l.country_code}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -207,7 +228,7 @@ export function MapView() {
       default: arr = arr.slice().sort((a, b) => b.importance - a.importance);
     }
     return arr;
-  }, [lakes, countryFilter, typeFilter, tempRange, query, sortBy, visibleOnly, bounds, userLoc]);
+  }, [lakes, countryFilter, typeFilter, tempRange, swimFilter, sizeFilter, photoOnly, query, sortBy, visibleOnly, bounds, userLoc]);
 
   const countries = useMemo(
     () => Array.from(new Set(lakes.map((l) => l.country_code))).sort(),
@@ -222,7 +243,10 @@ export function MapView() {
   const activeFilterCount =
     (countryFilter !== "all" ? 1 : 0) +
     (typeFilter !== "all" ? 1 : 0) +
-    (tempRange[0] > -5 || tempRange[1] < 35 ? 1 : 0);
+    (tempRange[0] > -5 || tempRange[1] < 35 ? 1 : 0) +
+    (swimFilter !== "all" ? 1 : 0) +
+    (sizeFilter !== "all" ? 1 : 0) +
+    (photoOnly ? 1 : 0);
 
   // Init map.
   useEffect(() => {
@@ -604,6 +628,9 @@ export function MapView() {
     setCountryFilter("all");
     setTypeFilter("all");
     setTempRange([-5, 35]);
+    setSwimFilter("all");
+    setSizeFilter("all");
+    setPhotoOnly(false);
     setQuery("");
     setSortBy("importance");
   };
@@ -631,6 +658,9 @@ export function MapView() {
           countryFilter={countryFilter} setCountryFilter={setCountryFilter}
           typeFilter={typeFilter} setTypeFilter={setTypeFilter}
           tempRange={tempRange} setTempRange={setTempRange}
+          swimFilter={swimFilter} setSwimFilter={setSwimFilter}
+          sizeFilter={sizeFilter} setSizeFilter={setSizeFilter}
+          photoOnly={photoOnly} setPhotoOnly={setPhotoOnly}
           sortBy={sortBy} setSortBy={setSortBy}
           onOpen={openLake}
           hasLocation={!!userLoc}
@@ -877,6 +907,9 @@ export function MapView() {
           countryFilter={countryFilter} setCountryFilter={setCountryFilter}
           typeFilter={typeFilter} setTypeFilter={setTypeFilter}
           tempRange={tempRange} setTempRange={setTempRange}
+          swimFilter={swimFilter} setSwimFilter={setSwimFilter}
+          sizeFilter={sizeFilter} setSizeFilter={setSizeFilter}
+          photoOnly={photoOnly} setPhotoOnly={setPhotoOnly}
           sortBy={sortBy} setSortBy={setSortBy}
           count={filtered.length}
           clearAll={clearAllFilters}
@@ -895,6 +928,9 @@ function SidebarContent(props: {
   countryFilter: string; setCountryFilter: (v: string) => void;
   typeFilter: string; setTypeFilter: (v: string) => void;
   tempRange: [number, number]; setTempRange: (v: [number, number]) => void;
+  swimFilter: "all" | "swimmable" | "warm" | "cold"; setSwimFilter: (v: "all" | "swimmable" | "warm" | "cold") => void;
+  sizeFilter: "all" | "small" | "medium" | "large"; setSizeFilter: (v: "all" | "small" | "medium" | "large") => void;
+  photoOnly: boolean; setPhotoOnly: (v: boolean) => void;
   sortBy: SortKey; setSortBy: (v: SortKey) => void;
   onOpen: (l: LakeMarker) => void;
   hasLocation: boolean;
@@ -905,6 +941,9 @@ function SidebarContent(props: {
     countryFilter, setCountryFilter,
     typeFilter, setTypeFilter,
     tempRange, setTempRange,
+    swimFilter, setSwimFilter,
+    sizeFilter, setSizeFilter,
+    photoOnly, setPhotoOnly,
     sortBy, setSortBy,
     hasLocation,
     onOpen,
@@ -1016,6 +1055,87 @@ function SidebarContent(props: {
             <option value="name">🔤 {t("sort.nameFull")}</option>
             {hasLocation && <option value="distance">📍 {t("sort.distanceFull")}</option>}
           </select>
+        </label>
+
+        {/* Swim-safety filter (segmented control). */}
+        <div className="text-xs">
+          <div className="text-slate-500 font-medium mb-1.5">{t("filter.swim")}</div>
+          <div className="grid grid-cols-4 gap-1 rounded-2xl bg-water-50 p-0.5" role="radiogroup" aria-label={t("filter.swim")}>
+            {(
+              [
+                ["all",       t("filter.swim.all")],
+                ["swimmable", t("filter.swim.swimmable")],
+                ["warm",      t("filter.swim.warm")],
+                ["cold",      t("filter.swim.cold")],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={swimFilter === v}
+                onClick={() => setSwimFilter(v)}
+                className={cn(
+                  "rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition",
+                  swimFilter === v
+                    ? "bg-white shadow-sm text-water-800"
+                    : "text-slate-600 hover:bg-white/70",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Area-size filter. */}
+        <div className="text-xs">
+          <div className="text-slate-500 font-medium mb-1.5">{t("filter.size")}</div>
+          <div className="grid grid-cols-4 gap-1 rounded-2xl bg-water-50 p-0.5" role="radiogroup" aria-label={t("filter.size")}>
+            {(
+              [
+                ["all",    t("filter.size.all")],
+                ["small",  t("filter.size.small")],
+                ["medium", t("filter.size.medium")],
+                ["large",  t("filter.size.large")],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={sizeFilter === v}
+                onClick={() => setSizeFilter(v)}
+                className={cn(
+                  "rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition",
+                  sizeFilter === v
+                    ? "bg-white shadow-sm text-water-800"
+                    : "text-slate-600 hover:bg-white/70",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Photo-only toggle. */}
+        <label className="flex items-center justify-between text-xs cursor-pointer">
+          <span className="text-slate-500 font-medium">{t("filter.hasPhoto")}</span>
+          <span
+            role="switch"
+            aria-checked={photoOnly}
+            onClick={() => setPhotoOnly(!photoOnly)}
+            className={cn(
+              "relative inline-flex h-5 w-9 items-center rounded-full transition",
+              photoOnly ? "bg-water-500" : "bg-slate-300",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-4 w-4 rounded-full bg-white shadow transform transition",
+                photoOnly ? "translate-x-4" : "translate-x-0.5",
+              )}
+            />
+          </span>
         </label>
       </div>
 
@@ -1190,6 +1310,9 @@ function MobileFilterModal(props: {
   countryFilter: string; setCountryFilter: (v: string) => void;
   typeFilter: string; setTypeFilter: (v: string) => void;
   tempRange: [number, number]; setTempRange: (v: [number, number]) => void;
+  swimFilter: "all" | "swimmable" | "warm" | "cold"; setSwimFilter: (v: "all" | "swimmable" | "warm" | "cold") => void;
+  sizeFilter: "all" | "small" | "medium" | "large"; setSizeFilter: (v: "all" | "small" | "medium" | "large") => void;
+  photoOnly: boolean; setPhotoOnly: (v: boolean) => void;
   sortBy: SortKey; setSortBy: (v: SortKey) => void;
   count: number;
   clearAll: () => void;
@@ -1199,6 +1322,9 @@ function MobileFilterModal(props: {
     countryFilter, setCountryFilter,
     typeFilter, setTypeFilter,
     tempRange, setTempRange,
+    swimFilter, setSwimFilter,
+    sizeFilter, setSizeFilter,
+    photoOnly, setPhotoOnly,
     sortBy, setSortBy,
     count, clearAll,
   } = props;
@@ -1285,7 +1411,7 @@ function MobileFilterModal(props: {
                 onClick={() => setCountryFilter("all")}
                 className="text-water-600 font-medium normal-case text-[11px] hover:underline"
               >
-                Clear
+                {t("filter.clear")}
               </button>
             )}
           </div>
@@ -1326,7 +1452,7 @@ function MobileFilterModal(props: {
                 onClick={() => setTypeFilter("all")}
                 className="text-water-600 font-medium normal-case text-[11px] hover:underline"
               >
-                Clear
+                {t("filter.clear")}
               </button>
             )}
           </div>
@@ -1384,6 +1510,86 @@ function MobileFilterModal(props: {
             ))}
           </div>
         </section>
+
+        <section>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">{t("filter.swim")}</div>
+          <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-water-50 p-1" role="radiogroup" aria-label={t("filter.swim")}>
+            {(
+              [
+                ["all",       t("filter.swim.all")],
+                ["swimmable", t("filter.swim.swimmable")],
+                ["warm",      t("filter.swim.warm")],
+                ["cold",      t("filter.swim.cold")],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={swimFilter === v}
+                onClick={() => setSwimFilter(v)}
+                className={cn(
+                  "rounded-xl px-2 py-2 text-sm font-medium transition",
+                  swimFilter === v
+                    ? "bg-white shadow-sm text-water-800"
+                    : "text-slate-600 hover:bg-white/70",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">{t("filter.size")}</div>
+          <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-water-50 p-1" role="radiogroup" aria-label={t("filter.size")}>
+            {(
+              [
+                ["all",    t("filter.size.all")],
+                ["small",  t("filter.size.small")],
+                ["medium", t("filter.size.medium")],
+                ["large",  t("filter.size.large")],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={sizeFilter === v}
+                onClick={() => setSizeFilter(v)}
+                className={cn(
+                  "rounded-xl px-2 py-2 text-sm font-medium transition",
+                  sizeFilter === v
+                    ? "bg-white shadow-sm text-water-800"
+                    : "text-slate-600 hover:bg-white/70",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <label className="flex items-center justify-between text-sm cursor-pointer p-3 rounded-2xl bg-water-50/50 border border-water-100/70">
+            <span className="font-medium text-slate-700">{t("filter.hasPhoto")}</span>
+            <span
+              role="switch"
+              aria-checked={photoOnly}
+              onClick={() => setPhotoOnly(!photoOnly)}
+              className={cn(
+                "relative inline-flex h-6 w-11 items-center rounded-full transition",
+                photoOnly ? "bg-water-500" : "bg-slate-300",
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-5 w-5 rounded-full bg-white shadow transform transition",
+                  photoOnly ? "translate-x-5" : "translate-x-0.5",
+                )}
+              />
+            </span>
+          </label>
+        </section>
       </div>
 
       <div
@@ -1394,7 +1600,7 @@ function MobileFilterModal(props: {
           onClick={clearAll}
           className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-semibold py-3.5 px-6 transition"
         >
-          Reset
+          {t("filter.reset")}
         </button>
         <button
           onClick={onClose}
