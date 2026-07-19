@@ -13,7 +13,7 @@ import {
 import { bucketForTemp, formatTemp, relativeTime, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
-import { useT } from "@/lib/i18n";
+import { useT, useP } from "@/lib/i18n";
 import { IconButton, TempPill, GlassCard } from "@/components/ui";
 
 interface LakeMarker {
@@ -407,10 +407,10 @@ export function MapView() {
 
   return (
     <div className="relative h-full w-full flex overflow-hidden bg-water-50 min-h-0">
-      {/* Desktop side list */}
+      {/* Desktop side list — pt-[76px] leaves room for the floating nav on top. */}
       <aside
         className={cn(
-          "hidden md:flex flex-col w-[340px] lg:w-[400px] h-full bg-white/85 backdrop-blur-xl border-r border-white/60 shadow-[0_0_40px_rgba(14,165,233,0.08)] z-20 min-h-0",
+          "hidden md:flex flex-col w-[340px] lg:w-[400px] h-full bg-white/85 backdrop-blur-xl border-r border-white/60 shadow-[0_0_40px_rgba(14,165,233,0.08)] z-20 min-h-0 pt-[76px]",
           !showList && "md:hidden",
         )}
       >
@@ -436,12 +436,12 @@ export function MapView() {
         <IconButton
           icon={showList ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
           onClick={() => setShowList((v) => !v)}
-          className="hidden md:inline-flex absolute top-4 left-4 z-30"
+          className="hidden md:inline-flex absolute top-[76px] left-4 z-30"
           aria-label={showList ? t("map.hideList") : t("map.showList")}
         />
 
-        {/* Mobile: top search + filter */}
-        <div className="md:hidden absolute top-3 left-3 right-3 z-30 flex gap-2 items-center">
+        {/* Mobile: top search + filter — sits below the floating nav */}
+        <div className="md:hidden absolute top-[68px] left-3 right-3 z-30 flex gap-2 items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
             <input
@@ -479,7 +479,7 @@ export function MapView() {
         <button
           onClick={() => setVisibleOnly((v) => !v)}
           className={cn(
-            "absolute top-4 left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-1.5 rounded-full shadow-lg px-4 py-2 text-xs font-semibold transition border",
+            "absolute top-[76px] left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-1.5 rounded-full shadow-lg px-4 py-2 text-xs font-semibold transition border",
             visibleOnly
               ? "bg-water-500 text-white border-water-600"
               : "bg-white/95 backdrop-blur text-water-800 border-white/60 hover:bg-white",
@@ -514,8 +514,8 @@ export function MapView() {
           </div>
         )}
 
-        {/* Right controls stack — pushed below the mobile top bar */}
-        <div className="absolute top-4 right-4 z-20 flex flex-col gap-2 items-end md:top-4 pt-[52px] md:pt-0">
+        {/* Right controls stack — pushed below the floating nav on desktop, and below the mobile top bar as well. */}
+        <div className="absolute top-[76px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
           <div className="relative">
             <IconButton
               icon={<Layers className="h-5 w-5" />}
@@ -701,6 +701,7 @@ function SidebarContent(props: {
     onOpen,
   } = props;
   const t = useT();
+  const p = useP();
 
   return (
     <>
@@ -727,7 +728,7 @@ function SidebarContent(props: {
 
         <div className="flex items-center flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-water-100 text-water-700 px-2.5 py-1 font-semibold">
-            {filtered.length} lakes
+            {p("map.lakesShown", filtered.length)}
           </span>
           {countryFilter !== "all" && (
             <button
@@ -755,26 +756,26 @@ function SidebarContent(props: {
               onChange={(e) => setCountryFilter(e.target.value)}
               className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
             >
-              <option value="all">All countries</option>
+              <option value="all">{t("map.allCountries")}</option>
               {countries.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
           <label>
-            <span className="text-slate-500 font-medium">Type</span>
+            <span className="text-slate-500 font-medium">{t("map.type")}</span>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
             >
-              <option value="all">All types</option>
-              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+              <option value="all">{t("map.allTypes")}</option>
+              {types.map((tp) => <option key={tp} value={tp}>{tp}</option>)}
             </select>
           </label>
         </div>
 
         <label className="block text-xs">
           <span className="text-slate-500 font-medium">
-            Temperature: <b className="tabular-nums text-slate-700">{tempRange[0]}°C</b> — <b className="tabular-nums text-slate-700">{tempRange[1]}°C</b>
+            {t("filter.temperature")}: <b className="tabular-nums text-slate-700">{tempRange[0]}°C</b> — <b className="tabular-nums text-slate-700">{tempRange[1]}°C</b>
           </span>
           <div className="mt-2 flex items-center gap-2">
             <input
@@ -871,6 +872,7 @@ function MobileBottomSheet({
   hideForSelection: boolean;
 }) {
   const t = useT();
+  const p = useP();
   if (hideForSelection) return null;
   const heights = {
     hidden: "translate-y-full",
@@ -904,9 +906,9 @@ function MobileBottomSheet({
         <div className="px-4 pb-3 flex items-center gap-3 shrink-0 border-b border-water-100/50">
           <div className="flex-1">
             <div className="text-sm font-semibold text-deep">
-              {filtered.length} {filtered.length === 1 ? "lake" : "lakes"} in view
+              {p("map.lakesInView", filtered.length)}
             </div>
-            <div className="text-[11px] text-slate-500">Tap any lake to jump to it</div>
+            <div className="text-[11px] text-slate-500">{t("map.tapToJump")}</div>
           </div>
           <button
             onClick={() => setState(state === "full" ? "peek" : "full")}
