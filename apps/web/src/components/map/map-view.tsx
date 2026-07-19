@@ -6,11 +6,12 @@ import maplibregl, { Map, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Layers, Locate, Minus, Plus, X, Search,
-  Thermometer, Waves, Filter, ChevronRight, ChevronLeft,
-  Sparkles, Navigation2, Share2,
+  Thermometer, Waves, Filter, ChevronRight, ChevronLeft, ChevronUp,
+  Sparkles, Navigation2, Map as MapIcon, Mountain, Satellite as SatIcon, Moon, Sun,
 } from "lucide-react";
-import { bucketForTemp, formatTemp, relativeTime } from "@/lib/temperature";
+import { bucketForTemp, formatTemp, relativeTime, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
+import { IconButton, TempPill, GlassCard } from "@/components/ui";
 
 interface LakeMarker {
   id: string;
@@ -28,13 +29,33 @@ interface LakeMarker {
   source: string | null;
 }
 
-type BasemapKey = "positron" | "voyager" | "dark" | "satellite";
+type BasemapKey = "positron" | "voyager" | "terrain" | "dark" | "satellite";
 
-const BASEMAPS: Record<BasemapKey, { label: string; style: string; short: string }> = {
-  positron:  { label: "Light",     short: "Light",  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
-  voyager:   { label: "Voyager",   short: "Std",    style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" },
-  dark:      { label: "Dark",      short: "Dark",   style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
-  satellite: { label: "Satellite", short: "Sat",    style: {
+// Style URLs — all free, no API key required.
+const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style: unknown }> = {
+  positron:  { label: "Light",     icon: Sun,       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
+  voyager:   { label: "Streets",   icon: MapIcon,   style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" },
+  terrain:   { label: "Terrain",   icon: Mountain,  style: {
+    version: 8,
+    sources: {
+      osm: {
+        type: "raster",
+        tiles: [
+          "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+          "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+          "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
+        ],
+        tileSize: 256,
+        maxzoom: 17,
+        attribution:
+          "Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)",
+      },
+    },
+    layers: [{ id: "osm-terrain", type: "raster", source: "osm" }],
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  } },
+  dark:      { label: "Dark",      icon: Moon,      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
+  satellite: { label: "Satellite", icon: SatIcon,   style: {
     version: 8,
     sources: {
       esri: {
@@ -48,8 +69,11 @@ const BASEMAPS: Record<BasemapKey, { label: string; style: string; short: string
       },
     },
     layers: [{ id: "esri", type: "raster", source: "esri" }],
-  } as unknown as string },
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  } },
 };
+
+type SortKey = "importance" | "warmest" | "coldest" | "name";
 
 export function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -58,6 +82,8 @@ export function MapView() {
   const [lakes, setLakes] = useState<LakeMarker[]>([]);
   const [selected, setSelected] = useState<LakeMarker | null>(null);
   const [showList, setShowList] = useState(true);
+  const [mobilePanel, setMobilePanel] = useState<"peek" | "half" | "full" | "hidden">("peek");
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [basemap, setBasemap] = useState<BasemapKey>("positron");
   const [showLayerMenu, setShowLayerMenu] = useState(false);
@@ -65,7 +91,7 @@ export function MapView() {
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"warmest" | "coldest" | "name" | "importance">("importance");
+  const [sortBy, setSortBy] = useState<SortKey>("importance");
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
 
   // Fetch lakes once.
@@ -93,8 +119,7 @@ export function MapView() {
       case "warmest": arr = arr.slice().sort((a, b) => (b.temp_c ?? -999) - (a.temp_c ?? -999)); break;
       case "coldest": arr = arr.slice().sort((a, b) => (a.temp_c ??  999) - (b.temp_c ??  999)); break;
       case "name":    arr = arr.slice().sort((a, b) => a.name.localeCompare(b.name)); break;
-      case "importance":
-      default:        arr = arr.slice().sort((a, b) => b.importance - a.importance); break;
+      default:        arr = arr.slice().sort((a, b) => b.importance - a.importance);
     }
     return arr;
   }, [lakes, countryFilter, typeFilter, tempRange, query, sortBy]);
@@ -104,13 +129,23 @@ export function MapView() {
     [lakes],
   );
 
+  const types = useMemo(
+    () => Array.from(new Set(lakes.map((l) => l.type))).sort(),
+    [lakes],
+  );
+
+  const activeFilterCount =
+    (countryFilter !== "all" ? 1 : 0) +
+    (typeFilter !== "all" ? 1 : 0) +
+    (tempRange[0] > -5 || tempRange[1] < 35 ? 1 : 0);
+
   // Init map.
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: BASEMAPS[basemap].style,
+      style: BASEMAPS[basemap].style as never,
       center: [14, 49],
       zoom: 4.2,
       attributionControl: false,
@@ -125,7 +160,7 @@ export function MapView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Switch basemap while preserving camera + layers.
+  // Switch basemap.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -139,10 +174,8 @@ export function MapView() {
     if (!map) return;
 
     let cancelled = false;
-
     const doUpdate = () => {
       if (cancelled) return;
-      // clean existing markers
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
@@ -161,7 +194,6 @@ export function MapView() {
         src.setData(fc);
       } else {
         map.addSource("lake-temps", { type: "geojson", data: fc });
-
         map.addLayer({
           id: "lake-heatmap",
           type: "heatmap",
@@ -210,12 +242,9 @@ export function MapView() {
       });
     };
 
-    if (map.isStyleLoaded()) {
-      doUpdate();
-    } else {
-      map.once("load", doUpdate);
-    }
-    // React to future style reloads (basemap swap).
+    if (map.isStyleLoaded()) doUpdate();
+    else map.once("load", doUpdate);
+
     const onStyleData = () => { if (map.isStyleLoaded()) doUpdate(); };
     map.on("styledata", onStyleData);
 
@@ -242,36 +271,41 @@ export function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !userLoc) return;
-    const src = map.getSource("user-loc") as maplibregl.GeoJSONSource | undefined;
-    const data = {
-      type: "FeatureCollection" as const,
-      features: [{ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [userLoc.lng, userLoc.lat] }, properties: {} }],
-    };
-    if (src) src.setData(data);
-    else if (map.isStyleLoaded()) {
+
+    const apply = () => {
+      const data = {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          geometry: { type: "Point" as const, coordinates: [userLoc.lng, userLoc.lat] },
+          properties: {},
+        }],
+      };
+      const src = map.getSource("user-loc") as maplibregl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData(data);
+        return;
+      }
       map.addSource("user-loc", { type: "geojson", data });
       map.addLayer({
         id: "user-loc-halo",
         type: "circle",
         source: "user-loc",
-        paint: {
-          "circle-radius": 22,
-          "circle-color": "#0EA5E9",
-          "circle-opacity": 0.15,
-        },
+        paint: { "circle-radius": 22, "circle-color": "#0EA5E9", "circle-opacity": 0.15 },
       });
       map.addLayer({
         id: "user-loc-dot",
         type: "circle",
         source: "user-loc",
         paint: {
-          "circle-radius": 6,
-          "circle-color": "#0EA5E9",
-          "circle-stroke-color": "#FFFFFF",
-          "circle-stroke-width": 2,
+          "circle-radius": 6, "circle-color": "#0EA5E9",
+          "circle-stroke-color": "#FFFFFF", "circle-stroke-width": 2,
         },
       });
-    }
+    };
+
+    if (map.isStyleLoaded()) apply();
+    else map.once("load", apply);
   }, [userLoc, basemap]);
 
   const zoom = (delta: number) => {
@@ -284,262 +318,147 @@ export function MapView() {
     mapRef.current?.easeTo({ center: [14, 49], zoom: 4.2, duration: 800 });
   };
 
-  const types = useMemo(
-    () => Array.from(new Set(lakes.map((l) => l.type))).sort(),
-    [lakes],
-  );
+  const clearAllFilters = () => {
+    setCountryFilter("all");
+    setTypeFilter("all");
+    setTempRange([-5, 35]);
+    setQuery("");
+    setSortBy("importance");
+  };
+
+  const openLake = (l: LakeMarker) => {
+    setSelected(l);
+    mapRef.current?.easeTo({ center: [l.lng, l.lat], zoom: 9, duration: 700 });
+    setMobilePanel("peek");
+  };
 
   return (
     <div className="relative h-full w-full flex overflow-hidden bg-water-50 min-h-0">
-      {/* Side list (desktop) */}
+      {/* Desktop side list */}
       <aside
         className={cn(
-          "hidden md:flex flex-col w-[340px] lg:w-[380px] h-full bg-white/80 backdrop-blur-xl border-r border-white/60 shadow-[0_0_40px_rgba(14,165,233,0.08)] z-20",
+          "hidden md:flex flex-col w-[340px] lg:w-[400px] h-full bg-white/85 backdrop-blur-xl border-r border-white/60 shadow-[0_0_40px_rgba(14,165,233,0.08)] z-20 min-h-0",
           !showList && "md:hidden",
         )}
       >
-        <div className="p-4 border-b border-water-100/70 space-y-3">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
-            <input
-              type="search"
-              inputMode="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search lakes…"
-              className="w-full rounded-full border border-water-200/70 bg-white/90 pl-9 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-water-400 focus:border-water-400 transition"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Counters row */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="rounded-full bg-water-100 text-water-700 px-2.5 py-1 font-medium">
-              {filtered.length} lakes
-            </span>
-            {countryFilter !== "all" && (
-              <button
-                onClick={() => setCountryFilter("all")}
-                className="rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 font-medium hover:bg-slate-200 transition"
-              >
-                {countryFilter} ×
-              </button>
-            )}
-            {typeFilter !== "all" && (
-              <button
-                onClick={() => setTypeFilter("all")}
-                className="rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 font-medium hover:bg-slate-200 transition"
-              >
-                {typeFilter} ×
-              </button>
-            )}
-          </div>
-
-          {/* Filters */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <label className="block">
-              <span className="text-slate-500">Country</span>
-              <select
-                value={countryFilter}
-                onChange={(e) => setCountryFilter(e.target.value)}
-                className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
-              >
-                <option value="all">All</option>
-                {countries.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-slate-500">Type</span>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
-              >
-                <option value="all">All</option>
-                {types.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <label className="block text-xs">
-            <span className="text-slate-500">
-              Temperature: <b className="tabular-nums text-slate-700">{tempRange[0]}°C</b> to <b className="tabular-nums text-slate-700">{tempRange[1]}°C</b>
-            </span>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="range" min={-5} max={35} step={1}
-                value={tempRange[0]}
-                onChange={(e) => setTempRange([Math.min(parseInt(e.target.value), tempRange[1] - 1), tempRange[1]])}
-                className="flex-1 accent-water-500"
-              />
-              <input
-                type="range" min={-5} max={35} step={1}
-                value={tempRange[1]}
-                onChange={(e) => setTempRange([tempRange[0], Math.max(parseInt(e.target.value), tempRange[0] + 1)])}
-                className="flex-1 accent-water-500"
-              />
-            </div>
-          </label>
-
-          {/* Sort */}
-          <div className="flex items-center gap-1 text-xs">
-            <span className="text-slate-500">Sort:</span>
-            {(["importance", "warmest", "coldest", "name"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setSortBy(s)}
-                className={cn(
-                  "rounded-full px-2.5 py-1 font-medium transition",
-                  sortBy === s
-                    ? "bg-water-500 text-white shadow"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                )}
-              >
-                {s === "importance" ? "Top" : s[0].toUpperCase() + s.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <ul className="flex-1 overflow-y-auto divide-y divide-water-100/50 no-scrollbar">
-          {filtered.length === 0 && (
-            <li className="p-6 text-sm text-slate-500 text-center">
-              No lakes match your filters.
-            </li>
-          )}
-          {filtered.slice(0, 500).map((l) => {
-            const bucket = bucketForTemp(l.temp_c);
-            return (
-              <li key={l.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelected(l);
-                    mapRef.current?.easeTo({ center: [l.lng, l.lat], zoom: 9, duration: 700 });
-                  }}
-                  className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-water-50/80 transition"
-                >
-                  <span
-                    className="w-11 h-11 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-[0_2px_8px_rgba(0,0,0,0.15)] tabular-nums shrink-0"
-                    style={{ backgroundColor: bucket.color }}
-                  >
-                    {l.temp_c != null ? `${l.temp_c.toFixed(0)}°` : "?"}
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block font-medium text-deep truncate">{l.name}</span>
-                    <span className="block text-xs text-slate-500 truncate">
-                      {l.country_code} · {l.type}
-                      {l.area_km2 && ` · ${Number(l.area_km2).toFixed(1)} km²`}
-                    </span>
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <SidebarContent
+          filtered={filtered}
+          countries={countries}
+          types={types}
+          query={query} setQuery={setQuery}
+          countryFilter={countryFilter} setCountryFilter={setCountryFilter}
+          typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+          tempRange={tempRange} setTempRange={setTempRange}
+          sortBy={sortBy} setSortBy={setSortBy}
+          onOpen={openLake}
+        />
       </aside>
 
       {/* Map canvas + overlays */}
       <div className="relative flex-1 h-full min-h-0">
         <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
-        {/* Toggle side list */}
-        <button
+        {/* Desktop: toggle list */}
+        <IconButton
+          icon={showList ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
           onClick={() => setShowList((v) => !v)}
-          className={cn(
-            "hidden md:flex absolute top-4 z-30 items-center justify-center h-10 w-10 rounded-full bg-white/95 backdrop-blur shadow-lg text-water-700 hover:bg-white transition",
-            showList ? "left-4" : "left-4",
-          )}
+          className="hidden md:inline-flex absolute top-4 left-4 z-30"
           aria-label={showList ? "Hide list" : "Show list"}
-          title={showList ? "Hide list" : "Show list"}
-        >
-          {showList ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-        </button>
+        />
 
-        {/* Mobile search + filter */}
-        <div className="md:hidden absolute top-3 left-3 right-3 z-30 flex gap-2">
+        {/* Mobile: top search + filter */}
+        <div className="md:hidden absolute top-3 left-3 right-3 z-30 flex gap-2 items-center">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              className="w-full rounded-full bg-white/95 backdrop-blur pl-9 pr-3 py-2.5 text-sm outline-none shadow-lg border border-white/60"
+              placeholder="Search lakes…"
+              className="w-full rounded-full bg-white/95 backdrop-blur pl-10 pr-10 py-2.5 text-sm outline-none shadow-lg border border-white/60 focus:ring-2 focus:ring-water-400"
             />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
+                aria-label="Clear"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
           <button
-            onClick={() => setShowList(true)}
-            className="h-10 w-10 rounded-full bg-white/95 backdrop-blur shadow-lg flex items-center justify-center text-water-700"
-            aria-label="Open list"
+            onClick={() => setMobileFilterOpen(true)}
+            className="relative h-11 w-11 rounded-full bg-white/95 backdrop-blur shadow-lg flex items-center justify-center text-water-700 hover:bg-white transition border border-white/60"
+            aria-label="Open filters"
           >
-            <Filter className="h-4 w-4" />
+            <Filter className="h-4.5 w-4.5" />
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-water-500 text-white text-[10px] font-bold flex items-center justify-center shadow ring-2 ring-white">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
         </div>
 
-        {/* Right-side controls stack */}
-        <div className="absolute top-4 right-4 z-30 flex flex-col gap-2 items-end">
-          {/* Layer picker */}
+        {/* Right controls stack — pushed below the mobile top bar */}
+        <div className="absolute top-4 right-4 z-20 flex flex-col gap-2 items-end md:top-4 pt-[52px] md:pt-0">
           <div className="relative">
-            <button
+            <IconButton
+              icon={<Layers className="h-5 w-5" />}
               onClick={() => setShowLayerMenu((v) => !v)}
-              className="h-10 w-10 rounded-full bg-white/95 backdrop-blur shadow-lg text-water-700 hover:bg-white transition flex items-center justify-center"
-              aria-label="Layers"
-              title="Map style & layers"
-            >
-              <Layers className="h-5 w-5" />
-            </button>
+              aria-label="Map layers"
+              active={showLayerMenu}
+            />
             {showLayerMenu && (
-              <div className="absolute right-0 top-12 w-56 rounded-3xl bg-white/95 backdrop-blur-xl shadow-[0_10px_40px_rgba(14,165,233,0.20)] border border-white/60 p-3">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1">Basemap</div>
+              <GlassCard variant="light" className="absolute right-0 top-12 w-64 p-3 z-50">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Basemap</div>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {(Object.keys(BASEMAPS) as BasemapKey[]).map((k) => (
-                    <button
-                      key={k}
-                      onClick={() => { setBasemap(k); }}
-                      className={cn(
-                        "rounded-2xl px-3 py-2 text-xs font-medium transition text-left",
-                        basemap === k
-                          ? "bg-water-500 text-white shadow"
-                          : "bg-water-50 text-slate-700 hover:bg-water-100",
-                      )}
-                    >
-                      {BASEMAPS[k].label}
-                    </button>
-                  ))}
+                  {(Object.keys(BASEMAPS) as BasemapKey[]).map((k) => {
+                    const B = BASEMAPS[k];
+                    const Icon = B.icon;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => setBasemap(k)}
+                        className={cn(
+                          "rounded-2xl px-3 py-2 text-xs font-medium transition text-left flex items-center gap-2",
+                          basemap === k
+                            ? "bg-water-500 text-white shadow"
+                            : "bg-water-50 text-slate-700 hover:bg-water-100",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {B.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1">Layers</div>
-                <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-2xl hover:bg-water-50 cursor-pointer">
+                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Layers</div>
+                <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
                   <span className="flex items-center gap-2 text-sm text-slate-700">
                     <Thermometer className="h-4 w-4 text-temp-hot" /> Heatmap
                   </span>
-                  <span className={cn(
-                    "relative inline-flex h-5 w-9 items-center rounded-full transition",
-                    showHeatmap ? "bg-water-500" : "bg-slate-300",
-                  )}>
+                  <span
+                    role="switch"
+                    aria-checked={showHeatmap}
+                    onClick={() => setShowHeatmap((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 items-center rounded-full transition cursor-pointer",
+                      showHeatmap ? "bg-water-500" : "bg-slate-300",
+                    )}
+                  >
                     <span className={cn(
                       "inline-block h-4 w-4 rounded-full bg-white shadow transform transition",
                       showHeatmap ? "translate-x-4" : "translate-x-0.5",
                     )} />
                   </span>
-                  <input type="checkbox" checked={showHeatmap} onChange={() => setShowHeatmap((v) => !v)} className="sr-only" />
                 </label>
-              </div>
+              </GlassCard>
             )}
           </div>
 
-          {/* Zoom buttons */}
-          <div className="flex flex-col rounded-full bg-white/95 backdrop-blur shadow-lg overflow-hidden">
+          <div className="flex flex-col rounded-full bg-white/95 backdrop-blur shadow-lg overflow-hidden border border-white/60">
             <button
               onClick={() => zoom(1)}
               className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition border-b border-water-100"
@@ -556,49 +475,485 @@ export function MapView() {
             </button>
           </div>
 
-          {/* Locate */}
-          <button
+          <IconButton
+            icon={<Locate className="h-5 w-5" />}
+            variant="primary"
             onClick={doLocate}
-            className="h-10 w-10 rounded-full bg-water-500 hover:bg-water-600 text-white shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center"
             aria-label="Find my location"
-            title="Find my location"
-          >
-            <Locate className="h-5 w-5" />
-          </button>
+          />
 
-          {/* World */}
-          <button
+          <IconButton
+            icon={<Navigation2 className="h-4 w-4" />}
             onClick={centerWorld}
-            className="h-10 w-10 rounded-full bg-white/95 backdrop-blur shadow-lg text-water-700 hover:bg-white transition flex items-center justify-center"
             aria-label="Reset view"
-            title="Reset view"
-          >
-            <Navigation2 className="h-4 w-4" />
-          </button>
+          />
         </div>
 
-        {/* Bottom-center temperature legend */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 flex items-center gap-2 text-[11px] font-medium text-slate-700">
+        {/* Temperature legend */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 flex items-center gap-2 text-[11px] font-medium text-slate-700 hidden sm:flex border border-white/60">
           <Waves className="h-3.5 w-3.5 text-water-600" />
           <span className="tabular-nums">-5°</span>
           <span
             className="h-2 w-40 rounded-full"
-            style={{
-              background: "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)",
-            }}
+            style={{ background: "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)" }}
           />
           <span className="tabular-nums">35°</span>
         </div>
 
-        {/* Bottom sheet / side card for selected lake */}
-        {selected && <SelectedSheet lake={selected} onClose={() => setSelected(null)} />}
+        {/* Selected sheet — floats top-right on desktop, above bottom sheet on mobile */}
+        {selected && (
+          <SelectedSheet
+            lake={selected}
+            onClose={() => setSelected(null)}
+          />
+        )}
+
+        {/* Mobile bottom sheet */}
+        <MobileBottomSheet
+          state={mobilePanel}
+          setState={setMobilePanel}
+          filtered={filtered}
+          onOpen={openLake}
+          hideForSelection={!!selected}
+        />
+      </div>
+
+      {/* Mobile filter modal */}
+      {mobileFilterOpen && (
+        <MobileFilterModal
+          onClose={() => setMobileFilterOpen(false)}
+          countries={countries}
+          types={types}
+          countryFilter={countryFilter} setCountryFilter={setCountryFilter}
+          typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+          tempRange={tempRange} setTempRange={setTempRange}
+          sortBy={sortBy} setSortBy={setSortBy}
+          count={filtered.length}
+          clearAll={clearAllFilters}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------- SIDEBAR CONTENT (desktop) ----------
+function SidebarContent(props: {
+  filtered: LakeMarker[];
+  countries: string[];
+  types: string[];
+  query: string; setQuery: (v: string) => void;
+  countryFilter: string; setCountryFilter: (v: string) => void;
+  typeFilter: string; setTypeFilter: (v: string) => void;
+  tempRange: [number, number]; setTempRange: (v: [number, number]) => void;
+  sortBy: SortKey; setSortBy: (v: SortKey) => void;
+  onOpen: (l: LakeMarker) => void;
+}) {
+  const {
+    filtered, countries, types,
+    query, setQuery,
+    countryFilter, setCountryFilter,
+    typeFilter, setTypeFilter,
+    tempRange, setTempRange,
+    sortBy, setSortBy,
+    onOpen,
+  } = props;
+
+  return (
+    <>
+      <div className="p-4 border-b border-water-100/70 space-y-3 shrink-0">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search lakes…"
+            className="w-full rounded-full border border-water-200/70 bg-white/90 pl-10 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-water-400"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
+              aria-label="Clear"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-water-100 text-water-700 px-2.5 py-1 font-semibold">
+            {filtered.length} lakes
+          </span>
+          {countryFilter !== "all" && (
+            <button
+              onClick={() => setCountryFilter("all")}
+              className="rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 font-medium hover:bg-slate-200 transition"
+            >
+              {countryFilter} ×
+            </button>
+          )}
+          {typeFilter !== "all" && (
+            <button
+              onClick={() => setTypeFilter("all")}
+              className="rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 font-medium hover:bg-slate-200 transition"
+            >
+              {typeFilter} ×
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label>
+            <span className="text-slate-500 font-medium">Country</span>
+            <select
+              value={countryFilter}
+              onChange={(e) => setCountryFilter(e.target.value)}
+              className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
+            >
+              <option value="all">All countries</option>
+              {countries.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="text-slate-500 font-medium">Type</span>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
+            >
+              <option value="all">All types</option>
+              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <label className="block text-xs">
+          <span className="text-slate-500 font-medium">
+            Temperature: <b className="tabular-nums text-slate-700">{tempRange[0]}°C</b> — <b className="tabular-nums text-slate-700">{tempRange[1]}°C</b>
+          </span>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="range" min={-5} max={35} step={1}
+              value={tempRange[0]}
+              onChange={(e) => setTempRange([Math.min(parseInt(e.target.value), tempRange[1] - 1), tempRange[1]])}
+              className="flex-1 accent-water-500"
+            />
+            <input
+              type="range" min={-5} max={35} step={1}
+              value={tempRange[1]}
+              onChange={(e) => setTempRange([tempRange[0], Math.max(parseInt(e.target.value), tempRange[0] + 1)])}
+              className="flex-1 accent-water-500"
+            />
+          </div>
+        </label>
+
+        <div className="flex items-center gap-1 text-xs flex-wrap">
+          <span className="text-slate-500 font-medium mr-1">Sort:</span>
+          {(["importance", "warmest", "coldest", "name"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSortBy(s)}
+              className={cn(
+                "rounded-full px-2.5 py-1 font-medium transition",
+                sortBy === s
+                  ? "bg-water-500 text-white shadow"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+              )}
+            >
+              {s === "importance" ? "Top" : s[0].toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ul className="flex-1 overflow-y-auto divide-y divide-water-100/50 no-scrollbar">
+        {filtered.length === 0 && (
+          <li className="p-8 text-sm text-slate-500 text-center">
+            No lakes match your filters.
+          </li>
+        )}
+        {filtered.slice(0, 500).map((l) => (
+          <li key={l.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(l)}
+              className="w-full text-left group flex items-center gap-3 px-4 py-3 hover:bg-water-50/70 transition"
+            >
+              <TempPill temp={l.temp_c} size="lg" className="!rounded-2xl shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-medium text-deep truncate">{l.name}</span>
+                <span className="block text-xs text-slate-500 truncate">
+                  {l.country_code} · {l.type}
+                  {l.area_km2 && ` · ${Number(l.area_km2).toFixed(1)} km²`}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+// ---------- MOBILE BOTTOM SHEET ----------
+function MobileBottomSheet({
+  state, setState, filtered, onOpen, hideForSelection,
+}: {
+  state: "peek" | "half" | "full" | "hidden";
+  setState: (s: "peek" | "half" | "full" | "hidden") => void;
+  filtered: LakeMarker[];
+  onOpen: (l: LakeMarker) => void;
+  hideForSelection: boolean;
+}) {
+  if (hideForSelection) return null;
+  const heights = {
+    hidden: "translate-y-full",
+    peek:   "translate-y-[calc(100%-92px)]",
+    half:   "translate-y-[45%]",
+    full:   "translate-y-[64px]",
+  };
+  return (
+    <div
+      className={cn(
+        "md:hidden absolute inset-x-0 bottom-0 top-0 z-30 flex flex-col pointer-events-none",
+      )}
+    >
+      <div
+        className={cn(
+          "mt-auto rounded-t-4xl bg-white/95 backdrop-blur-xl border-t border-white/60 shadow-[0_-8px_40px_rgba(14,165,233,0.15)] pointer-events-auto transition-transform duration-300 ease-out h-full flex flex-col",
+          heights[state],
+        )}
+      >
+        {/* Grabber */}
+        <button
+          type="button"
+          onClick={() => setState(state === "peek" ? "half" : state === "half" ? "full" : "peek")}
+          className="w-full pt-2 pb-1 flex justify-center shrink-0"
+          aria-label="Toggle list"
+        >
+          <span className="h-1.5 w-10 rounded-full bg-slate-300" />
+        </button>
+
+        {/* Header */}
+        <div className="px-4 pb-3 flex items-center gap-3 shrink-0 border-b border-water-100/50">
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-deep">
+              {filtered.length} {filtered.length === 1 ? "lake" : "lakes"} in view
+            </div>
+            <div className="text-[11px] text-slate-500">Tap any lake to jump to it</div>
+          </div>
+          <button
+            onClick={() => setState(state === "full" ? "peek" : "full")}
+            className="h-9 w-9 rounded-full bg-water-100 text-water-700 flex items-center justify-center"
+            aria-label={state === "full" ? "Collapse" : "Expand"}
+          >
+            {state === "full"
+              ? <ChevronRight className="h-4 w-4 rotate-90" />
+              : <ChevronUp className="h-4 w-4" />}
+          </button>
+        </div>
+
+        {/* Scrollable list */}
+        <ul className="flex-1 overflow-y-auto divide-y divide-water-100/40 no-scrollbar overscroll-contain">
+          {filtered.length === 0 && (
+            <li className="p-8 text-sm text-slate-500 text-center">
+              No lakes match your filters.
+            </li>
+          )}
+          {filtered.slice(0, 300).map((l) => (
+            <li key={l.id}>
+              <button
+                onClick={() => onOpen(l)}
+                className="w-full text-left group flex items-center gap-3 px-4 py-3 hover:bg-water-50/70 active:bg-water-50 transition"
+              >
+                <TempPill temp={l.temp_c} size="md" className="!rounded-2xl shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block font-medium text-deep truncate text-sm">{l.name}</span>
+                  <span className="block text-[11px] text-slate-500 truncate">
+                    {l.country_code} · {l.type}
+                    {l.area_km2 && ` · ${Number(l.area_km2).toFixed(1)} km²`}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
 }
 
+// ---------- MOBILE FILTER MODAL ----------
+function MobileFilterModal(props: {
+  onClose: () => void;
+  countries: string[];
+  types: string[];
+  countryFilter: string; setCountryFilter: (v: string) => void;
+  typeFilter: string; setTypeFilter: (v: string) => void;
+  tempRange: [number, number]; setTempRange: (v: [number, number]) => void;
+  sortBy: SortKey; setSortBy: (v: SortKey) => void;
+  count: number;
+  clearAll: () => void;
+}) {
+  const {
+    onClose, countries, types,
+    countryFilter, setCountryFilter,
+    typeFilter, setTypeFilter,
+    tempRange, setTempRange,
+    sortBy, setSortBy,
+    count, clearAll,
+  } = props;
+
+  return (
+    <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white">
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-water-100/70">
+        <div className="text-lg font-semibold text-deep">Filters</div>
+        <button
+          onClick={onClose}
+          className="h-10 w-10 rounded-full bg-water-50 flex items-center justify-center text-water-700"
+          aria-label="Close filters"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+        <section>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Water temperature</div>
+          <div className="text-sm text-deep font-medium mb-2 tabular-nums">
+            {tempRange[0]}°C — {tempRange[1]}°C
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="range" min={-5} max={35} step={1}
+              value={tempRange[0]}
+              onChange={(e) => setTempRange([Math.min(parseInt(e.target.value), tempRange[1] - 1), tempRange[1]])}
+              className="flex-1 accent-water-500"
+            />
+            <input
+              type="range" min={-5} max={35} step={1}
+              value={tempRange[1]}
+              onChange={(e) => setTempRange([tempRange[0], Math.max(parseInt(e.target.value), tempRange[0] + 1)])}
+              className="flex-1 accent-water-500"
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {[
+              { label: "❄ Cold-plunge", range: [0, 12] as [number, number] },
+              { label: "🌊 Fresh", range: [12, 18] as [number, number] },
+              { label: "☀️ Pleasant", range: [18, 24] as [number, number] },
+              { label: "🔥 Warm", range: [22, 35] as [number, number] },
+            ].map((p) => (
+              <button
+                key={p.label}
+                onClick={() => setTempRange(p.range)}
+                className="rounded-full px-3 py-1.5 text-xs bg-water-50 hover:bg-water-100 text-slate-700 border border-water-100 transition"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Country</div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setCountryFilter("all")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                countryFilter === "all" ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+              )}
+            >
+              All countries
+            </button>
+            {countries.map((c) => (
+              <button
+                key={c}
+                onClick={() => setCountryFilter(c)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium transition tabular-nums",
+                  countryFilter === c ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                )}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Type</div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setTypeFilter("all")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition capitalize",
+                typeFilter === "all" ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+              )}
+            >
+              All types
+            </button>
+            {types.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium transition capitalize",
+                  typeFilter === t ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Sort by</div>
+          <div className="flex flex-wrap gap-1.5">
+            {(["importance", "warmest", "coldest", "name"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSortBy(s)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                  sortBy === s ? "bg-water-500 text-white shadow" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                )}
+              >
+                {s === "importance" ? "Featured" : s[0].toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="shrink-0 border-t border-water-100/70 p-4 flex gap-2 safe-b bg-white/95 backdrop-blur">
+        <button
+          onClick={clearAll}
+          className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-3 px-5 transition"
+        >
+          Reset
+        </button>
+        <button
+          onClick={onClose}
+          className="flex-1 rounded-full bg-water-500 hover:bg-water-600 text-white font-semibold py-3 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2"
+        >
+          Show {count} {count === 1 ? "lake" : "lakes"} on map
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- SELECTED SHEET (bottom card / side card) ----------
 function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => void }) {
   const bucket = bucketForTemp(lake.temp_c);
+  const swim = assessSwim({ water_c: lake.temp_c });
+
   return (
     <div className="absolute left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 sm:w-[380px] z-40 rounded-4xl overflow-hidden bg-white/95 backdrop-blur-xl shadow-[0_20px_60px_rgba(14,165,233,0.25)] border border-white/60 safe-b">
       <div
@@ -622,7 +977,7 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
         <div className="mt-4 flex items-end gap-4">
           <div className="text-5xl font-semibold tabular-nums leading-none">{formatTemp(lake.temp_c, 1)}</div>
           <div className="text-xs opacity-90 pb-1">
-            <div className="font-semibold">{bucket.label}</div>
+            <div className="font-semibold">{swim.headline}</div>
             <div>{lake.measured_at ? `Updated ${relativeTime(lake.measured_at)}` : "No recent data"}</div>
           </div>
         </div>
