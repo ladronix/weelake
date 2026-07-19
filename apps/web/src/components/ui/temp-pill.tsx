@@ -1,5 +1,8 @@
+"use client";
+
 import { cn } from "@/lib/utils";
-import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { bucketForTemp } from "@/lib/temperature";
+import { usePrefs, toDisplayTemp, unitSymbol } from "@/lib/prefs";
 
 interface Props {
   temp: number | null | undefined;
@@ -7,6 +10,8 @@ interface Props {
   showUnit?: boolean;
   className?: string;
   precision?: number;
+  /** Skip unit conversion (component used in a context where the number is already unit-adjusted). */
+  raw?: boolean;
 }
 
 const SIZE = {
@@ -18,13 +23,26 @@ const SIZE = {
 };
 
 /**
- * Temperature pill — the atom used everywhere:
- * markers, list rows, hero badges, extremes ranking.
- * Uses windy-inspired color bucket.
+ * Temperature pill — the atom used everywhere.
+ * Reads the user's unit preference and converts input (always in °C) to display.
+ * Bucket colour is always computed from the underlying °C value so the
+ * visual palette stays stable across units.
  */
-export function TempPill({ temp, size = "md", showUnit = false, className, precision = 0 }: Props) {
-  const bucket = bucketForTemp(temp);
-  const t = temp == null || Number.isNaN(temp) ? null : temp;
+export function TempPill({ temp, size = "md", showUnit = false, className, precision = 0, raw }: Props) {
+  const { prefs } = usePrefs();
+  const c = temp == null || Number.isNaN(temp) ? null : temp;
+  const bucket = bucketForTemp(c); // colour by Celsius, always
+
+  const displayValue = raw
+    ? c
+    : (c != null ? toDisplayTemp(c, prefs.unit) : null);
+
+  const label = displayValue == null
+    ? "?"
+    : showUnit
+      ? `${displayValue.toFixed(precision)}${unitSymbol(prefs.unit)}`
+      : `${displayValue.toFixed(precision)}°`;
+
   return (
     <span
       className={cn(
@@ -35,7 +53,7 @@ export function TempPill({ temp, size = "md", showUnit = false, className, preci
       style={{ backgroundColor: bucket.color }}
       title={bucket.label}
     >
-      {t == null ? "?" : showUnit ? formatTemp(t, precision) : `${t.toFixed(precision)}°`}
+      {label}
     </span>
   );
 }

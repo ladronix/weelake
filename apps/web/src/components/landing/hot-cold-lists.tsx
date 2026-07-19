@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase";
-import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { TempPill } from "@/components/ui";
 import { Flame, Snowflake, ChevronRight } from "lucide-react";
 
 export async function HotColdLists() {
@@ -76,7 +76,6 @@ function List({
           const lake = Array.isArray(r.lakes) ? r.lakes[0] : r.lakes;
           if (!lake) return null;
           const temp = typeof r.temp_c === "string" ? parseFloat(r.temp_c) : r.temp_c;
-          const bucket = bucketForTemp(temp);
           return (
             <li key={lake.slug}>
               <Link
@@ -94,12 +93,7 @@ function List({
                     {lake.country_code} · {lake.type}
                   </span>
                 </span>
-                <span
-                  className="rounded-full px-3 py-1 text-xs font-bold text-white shadow-sm tabular-nums shrink-0"
-                  style={{ backgroundColor: bucket.color }}
-                >
-                  {formatTemp(temp)}
-                </span>
+                <TempPill temp={temp} size="sm" precision={1} className="!rounded-full" />
                 <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
               </Link>
             </li>

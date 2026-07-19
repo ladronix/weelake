@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase";
-import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import { bucketForTemp } from "@/lib/temperature";
+import { TempPill } from "@/components/ui";
 import { ChevronRight } from "lucide-react";
 
 const REGION_ORDER = ["Europe", "Americas", "Oceania", "Asia", "Africa"];
@@ -60,7 +61,6 @@ export async function CountryGrid() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {list.map((c) => {
-                const b = bucketForTemp(c.avg);
                 return (
                   <Link
                     key={c.code}
@@ -70,12 +70,7 @@ export async function CountryGrid() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="text-3xl leading-none">{c.emoji}</div>
                       {c.avg != null && (
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-sm tabular-nums"
-                          style={{ backgroundColor: b.color }}
-                        >
-                          {formatTemp(c.avg, 0)}
-                        </span>
+                        <TempPill temp={c.avg} size="xs" precision={0} className="!rounded-full" />
                       )}
                     </div>
                     <div className="mt-3 text-base font-semibold text-deep group-hover:text-water-700 transition truncate">
