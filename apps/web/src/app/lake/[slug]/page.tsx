@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft, MapPin, Wind, Sun, CloudRain, Thermometer,
-  Waves, Info, Navigation2, Share2, ExternalLink,
+  Waves, Info, Navigation2, Share2, ExternalLink, Map as MapIcon,
 } from "lucide-react";
 import { Nav } from "@/components/layout/nav";
 import { Footer } from "@/components/layout/footer";
@@ -118,10 +118,10 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Link
-            href="/map"
-            className="inline-flex items-center gap-1 text-sm text-water-700 hover:text-water-900 transition font-medium rounded-full py-1.5 px-3 hover:bg-water-100/60"
+            href={`/map?focus=${lake.slug}`}
+            className="inline-flex items-center gap-1.5 text-sm text-water-800 hover:text-water-900 transition font-semibold rounded-full py-2 px-3.5 bg-white/70 backdrop-blur border border-white/60 hover:bg-white shadow-sm"
           >
             <ArrowLeft className="h-4 w-4" /> Back to map
           </Link>
@@ -326,11 +326,17 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
             </div>
 
             <div className="flex flex-col gap-2">
+              <Link
+                href={`/map?focus=${lake.slug}`}
+                className="rounded-full bg-water-500 hover:bg-water-600 text-white font-semibold py-3 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2"
+              >
+                <MapIcon className="h-4 w-4" /> Show on map
+              </Link>
               <a
                 href={`https://www.google.com/maps/dir/?api=1&destination=${lake.lat},${lake.lng}`}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-water-500 hover:bg-water-600 text-white font-medium py-3 px-5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition flex items-center justify-center gap-2"
+                className="rounded-full bg-white/80 hover:bg-white border border-water-200 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2"
               >
                 <Navigation2 className="h-4 w-4" /> Navigate to this lake
               </a>
@@ -339,7 +345,7 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                   href={lake.wiki_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2"
+                  className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-2.5 px-5 transition flex items-center justify-center gap-2 text-sm"
                 >
                   <ExternalLink className="h-4 w-4" /> Wikipedia
                 </a>

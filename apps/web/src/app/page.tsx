@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { Hero } from "@/components/landing/hero";
+import { HeroBackground } from "@/components/landing/hero-background";
 import { LiveStats } from "@/components/landing/live-stats";
 import { LakeSearch } from "@/components/landing/lake-search";
 import { NearYou } from "@/components/landing/near-you";
@@ -15,19 +16,7 @@ export default function LandingPage() {
     <>
       <Nav />
       <main className="relative overflow-hidden">
-        {/* Ambient water background */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-water-mesh opacity-70"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-24 -right-24 -z-10 h-96 w-96 rounded-full bg-water-300/40 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute top-64 -left-24 -z-10 h-72 w-72 rounded-full bg-cyan-300/30 blur-3xl"
-        />
+        <HeroBackground />
 
         <Hero>
           <LakeSearch autofocus />
@@ -46,9 +35,7 @@ export default function LandingPage() {
         </section>
 
         <section className="section mt-10 sm:mt-16">
-          <Suspense fallback={<div className="h-[420px] skeleton rounded-4xl" />}>
-            <MiniMapPreview />
-          </Suspense>
+          <MiniMapPreview />
         </section>
 
         <section className="section mt-14 sm:mt-24" id="countries">

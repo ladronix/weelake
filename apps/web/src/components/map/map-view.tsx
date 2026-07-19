@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import maplibregl, { Map, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
@@ -97,6 +98,9 @@ export function MapView() {
   const [visibleOnly, setVisibleOnly] = useState(false);
   const [bounds, setBounds] = useState<{ n: number; s: number; e: number; w: number } | null>(null);
   const [hovered, setHovered] = useState<{ lake: LakeMarker; x: number; y: number } | null>(null);
+  const searchParams = useSearchParams();
+  const focusSlug = searchParams?.get("focus") ?? null;
+  const focusHandledRef = useRef<string | null>(null);
 
   // Fetch lakes once.
   useEffect(() => {
@@ -104,6 +108,26 @@ export function MapView() {
       .then((r) => r.json())
       .then((d) => setLakes(d.lakes ?? []));
   }, []);
+
+  // Focus a lake when arriving via /map?focus=slug.
+  useEffect(() => {
+    if (!focusSlug || focusHandledRef.current === focusSlug) return;
+    if (lakes.length === 0 || !mapRef.current) return;
+    const l = lakes.find((x) => x.slug === focusSlug);
+    if (!l) return;
+    focusHandledRef.current = focusSlug;
+    setSelected(l);
+    const doFly = () => {
+      mapRef.current?.easeTo({
+        center: [l.lng, l.lat],
+        zoom: Math.max(mapRef.current.getZoom(), 9),
+        duration: 900,
+        padding: { bottom: 240 },
+      });
+    };
+    if (mapRef.current.isStyleLoaded()) doFly();
+    else mapRef.current.once("load", doFly);
+  }, [focusSlug, lakes]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

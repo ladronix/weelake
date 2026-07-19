@@ -1,115 +1,156 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { createSupabaseServiceClient } from "@/lib/supabase";
-import { bucketForTemp, formatTemp } from "@/lib/temperature";
+import maplibregl, { Map, Marker } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { ArrowUpRight, Map as MapIcon } from "lucide-react";
+import { bucketForTemp, formatTemp } from "@/lib/temperature";
+
+interface Lake {
+  id: string;
+  slug: string;
+  name: string;
+  lat: number;
+  lng: number;
+  temp_c: number | null;
+  importance: number;
+}
 
 /**
- * Non-interactive teaser of the map:
- * an SVG-driven equirectangular projection of Europe with real temperature
- * pills placed at real lat/lng. Server-rendered for SEO & OG previews.
+ * Interactive preview map on the landing.
+ * Non-scrollable, no controls — just eye candy that opens the full map on click.
  */
-export async function MiniMapPreview() {
-  const supabase = createSupabaseServiceClient();
-  const { data } = await supabase
-    .from("lakes")
-    .select("id, slug, name, country_code, lat, lng, importance, lakes_current:lakes_current(temp_c)")
-    .order("importance", { ascending: false })
-    .limit(50);
+export function MiniMapPreview() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<Map | null>(null);
+  const markersRef = useRef<Marker[]>([]);
+  const [lakes, setLakes] = useState<Lake[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const lakes = (data ?? []).map((l) => {
-    const cur = Array.isArray(l.lakes_current) ? l.lakes_current[0] : l.lakes_current;
-    return { ...l, temp_c: cur?.temp_c != null ? Number(cur.temp_c) : null };
-  });
+  useEffect(() => {
+    fetch("/api/lakes?limit=200")
+      .then((r) => r.json())
+      .then((d) => {
+        const list = (d.lakes ?? []) as Lake[];
+        setLakes(list);
+        setTotalCount(d.count ?? list.length);
+      })
+      .catch(() => {});
+  }, []);
 
-  // Frame around Europe + mid-Atlantic for aesthetic composition.
-  const BBOX = { minLng: -14, maxLng: 44, minLat: 33, maxLat: 66 };
-  const inFrame = lakes.filter(
-    (l) => l.lng >= BBOX.minLng && l.lng <= BBOX.maxLng && l.lat >= BBOX.minLat && l.lat <= BBOX.maxLat,
-  );
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: "https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json",
+      center: [12, 50],
+      zoom: 3.2,
+      interactive: false,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
 
-  const proj = (lat: number, lng: number) => ({
-    x: ((lng - BBOX.minLng) / (BBOX.maxLng - BBOX.minLng)) * 100,
-    y: ((BBOX.maxLat - lat) / (BBOX.maxLat - BBOX.minLat)) * 100,
-  });
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !lakes.length) return;
+
+    const paint = () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+
+      lakes.forEach((l) => {
+        const bucket = bucketForTemp(l.temp_c);
+        const isMajor = (l.importance ?? 0) >= 9;
+        const el = document.createElement("div");
+        el.style.background = bucket.color;
+        el.className = isMajor
+          ? "flex items-center justify-center min-w-[30px] h-[22px] px-2 rounded-full text-white text-[10px] font-bold shadow ring-2 ring-white/80 tabular-nums pointer-events-none"
+          : "w-2 h-2 rounded-full ring-2 ring-white/80 shadow pointer-events-none";
+        if (isMajor) el.textContent = l.temp_c != null ? `${l.temp_c.toFixed(0)}°` : "?";
+        const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+          .setLngLat([l.lng, l.lat])
+          .addTo(map);
+        markersRef.current.push(marker);
+      });
+    };
+
+    if (map.isStyleLoaded()) paint();
+    else map.once("load", paint);
+  }, [lakes]);
 
   return (
     <Link
       href="/map"
-      className="group block relative rounded-4xl overflow-hidden bg-gradient-to-br from-water-500 via-water-600 to-water-800 shadow-[0_20px_60px_rgba(14,165,233,0.30)] h-[380px] sm:h-[460px] border border-water-300/40"
+      className="group relative block rounded-4xl overflow-hidden h-[380px] sm:h-[480px] border border-water-200/40 shadow-[0_20px_60px_rgba(14,165,233,0.15)] hover:shadow-[0_28px_80px_rgba(14,165,233,0.22)] transition-shadow"
     >
-      {/* Soft blobs */}
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Colour-boost overlay for the water theme */}
       <div
         aria-hidden
-        className="absolute inset-0"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundImage: `
-            radial-gradient(circle at 20% 30%, rgba(255,255,255,0.14), transparent 45%),
-            radial-gradient(circle at 78% 65%, rgba(56, 189, 248, 0.35), transparent 50%)
-          `,
+          backgroundImage:
+            "linear-gradient(180deg, rgba(14,165,233,0.12) 0%, rgba(14,165,233,0.0) 25%, rgba(14,165,233,0.0) 60%, rgba(3,105,161,0.30) 100%)",
         }}
       />
-      {/* Grid */}
-      <svg className="absolute inset-0 h-full w-full opacity-15" aria-hidden>
-        <defs>
-          <pattern id="mm-grid" width="48" height="48" patternUnits="userSpaceOnUse">
-            <path d="M 48 0 L 0 0 0 48" fill="none" stroke="white" strokeWidth="0.5" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#mm-grid)" />
-      </svg>
 
-      {/* Markers */}
-      {inFrame.map((l) => {
-        const { x, y } = proj(l.lat, l.lng);
-        const bucket = bucketForTemp(l.temp_c);
-        const isImportant = (l.importance ?? 0) >= 9;
-        return (
-          <div
-            key={l.id}
-            className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-500 group-hover:scale-110"
-            style={{ left: `${x}%`, top: `${y}%` }}
-            title={`${l.name} · ${formatTemp(l.temp_c)}`}
-          >
-            {isImportant && l.temp_c != null ? (
-              <span
-                className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-lg ring-2 ring-white/70 tabular-nums whitespace-nowrap block"
-                style={{ backgroundColor: bucket.color }}
-              >
-                {l.temp_c.toFixed(0)}°
-              </span>
-            ) : (
-              <span
-                className="block h-2.5 w-2.5 rounded-full border-2 border-white/80 shadow-md"
-                style={{ backgroundColor: bucket.color }}
-              />
-            )}
-          </div>
-        );
-      })}
-
-      {/* Foreground labels */}
-      <div className="relative z-10 h-full flex flex-col justify-between p-6 sm:p-8">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/20 backdrop-blur-md border border-white/25 px-3 py-1 text-[11px] font-medium text-white">
-            <MapIcon className="h-3 w-3" />
-            Live temperature map
-          </div>
-          <div className="mt-3 text-white text-2xl sm:text-3xl font-semibold tracking-tight">
-            {inFrame.length} lakes across Europe
-          </div>
-          <div className="text-white/80 text-sm mt-1">
-            Live water temperatures. Tap any pin for full details.
-          </div>
+      {/* Header pill */}
+      <div className="absolute top-4 left-4 right-4 flex items-start justify-between pointer-events-none">
+        <div className="inline-flex items-center gap-2 rounded-full bg-white/85 backdrop-blur-md border border-white/60 px-3 py-1 text-[11px] font-semibold text-water-800 shadow-sm">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+          </span>
+          Live temperature map
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <div className="rounded-full bg-white/20 backdrop-blur-md border border-white/25 text-white text-xs px-3 py-1.5">
-            {lakes.length} lakes total worldwide
-          </div>
-          <div className="rounded-full bg-white text-water-700 font-semibold text-sm px-4 py-2 flex items-center gap-1.5 shadow-lg group-hover:scale-105 transition-transform">
-            Open the map <ArrowUpRight className="h-4 w-4" />
-          </div>
+        <div className="inline-flex items-center gap-1 rounded-full bg-white/85 backdrop-blur-md border border-white/60 px-3 py-1 text-[11px] font-semibold text-water-800 shadow-sm">
+          <MapIcon className="h-3 w-3" /> {totalCount} lakes
         </div>
       </div>
+
+      {/* CTA bottom */}
+      <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 pointer-events-none">
+        <div className="rounded-3xl bg-white/85 backdrop-blur-md border border-white/60 px-4 py-2.5 shadow-sm max-w-[240px]">
+          <div className="text-xs text-slate-500">Preview</div>
+          <div className="text-sm font-semibold text-deep leading-snug">
+            Filter, zoom, discover.
+            <br />
+            Every lake, live.
+          </div>
+        </div>
+        <div className="pointer-events-auto rounded-full bg-water-500 group-hover:bg-water-600 text-white font-semibold text-sm px-5 py-3 flex items-center gap-1.5 shadow-[0_8px_20px_rgba(14,165,233,0.35)] group-hover:scale-105 transition-all">
+          Open the map <ArrowUpRight className="h-4 w-4" />
+        </div>
+      </div>
+
+      {/* Static sample if map fails */}
+      {lakes.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-water-100 to-water-200">
+          <div className="text-water-700 text-sm">Loading map preview…</div>
+        </div>
+      )}
+
+      {/* Silent legend */}
+      <div className="absolute top-16 right-4 pointer-events-none hidden md:flex items-center gap-1 rounded-full bg-white/85 backdrop-blur-md border border-white/60 px-2.5 py-1 text-[9px] text-slate-600">
+        <span>Cold</span>
+        <span
+          className="h-1.5 w-14 rounded-full"
+          style={{
+            background:
+              "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)",
+          }}
+        />
+        <span>Hot</span>
+      </div>
+
+      <span className="sr-only">{formatTemp(15)} example — click to open full map</span>
     </Link>
   );
 }
