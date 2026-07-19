@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 import { bucketForTemp, formatTemp } from "@/lib/temperature";
-import { Flame, Snowflake } from "lucide-react";
+import { Flame, Snowflake, ChevronRight } from "lucide-react";
 
 export async function HotColdLists() {
   const supabase = createSupabaseServiceClient();
@@ -9,41 +9,68 @@ export async function HotColdLists() {
   const [{ data: hottest }, { data: coldest }] = await Promise.all([
     supabase
       .from("lakes_current")
-      .select("temp_c, measured_at, lakes:lakes!inner(id, slug, name, country_code)")
+      .select("temp_c, measured_at, lakes:lakes!inner(id, slug, name, country_code, type)")
       .not("temp_c", "is", null)
       .order("temp_c", { ascending: false })
-      .limit(5),
+      .limit(6),
     supabase
       .from("lakes_current")
-      .select("temp_c, measured_at, lakes:lakes!inner(id, slug, name, country_code)")
+      .select("temp_c, measured_at, lakes:lakes!inner(id, slug, name, country_code, type)")
       .not("temp_c", "is", null)
       .order("temp_c", { ascending: true })
-      .limit(5),
+      .limit(6),
   ]);
 
   return (
     <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
-      <List title="Warmest right now" icon={<Flame className="h-4 w-4 text-temp-hot" />} rows={hottest ?? []} />
-      <List title="Coldest right now" icon={<Snowflake className="h-4 w-4 text-temp-cold" />} rows={coldest ?? []} />
+      <List
+        title="Warmest right now"
+        subtitle="Best for a long swim"
+        gradient="from-amber-400 to-red-500"
+        icon={<Flame className="h-4 w-4 text-white" />}
+        rows={hottest ?? []}
+      />
+      <List
+        title="Coldest right now"
+        subtitle="For the brave dippers"
+        gradient="from-sky-400 to-indigo-600"
+        icon={<Snowflake className="h-4 w-4 text-white" />}
+        rows={coldest ?? []}
+      />
     </div>
   );
 }
 
 function List({
-  title, icon, rows,
+  title, subtitle, gradient, icon, rows,
 }: {
   title: string;
+  subtitle: string;
+  gradient: string;
   icon: React.ReactNode;
-  rows: Array<{ temp_c: number | string; lakes: { slug: string; name: string; country_code: string } | { slug: string; name: string; country_code: string }[] }>;
+  rows: Array<{
+    temp_c: number | string;
+    lakes:
+      | { slug: string; name: string; country_code: string; type: string }
+      | { slug: string; name: string; country_code: string; type: string }[];
+  }>;
 }) {
   return (
-    <div className="glass rounded-4xl p-5 sm:p-6">
-      <div className="flex items-center gap-2 text-sm font-medium text-deep">
-        {icon} {title}
+    <div className="rounded-4xl bg-white/70 backdrop-blur-md border border-white/60 shadow-[0_8px_30px_rgba(14,165,233,0.08)] overflow-hidden">
+      <div className="px-5 sm:px-6 pt-5 pb-4 flex items-center gap-3">
+        <div className={`inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-gradient-to-br ${gradient} shadow-md`}>
+          {icon}
+        </div>
+        <div>
+          <div className="text-base font-semibold text-deep">{title}</div>
+          <div className="text-xs text-slate-500">{subtitle}</div>
+        </div>
       </div>
-      <ul className="mt-3 divide-y divide-white/60">
+      <ul className="divide-y divide-water-100/50">
         {rows.length === 0 && (
-          <li className="py-3 text-sm text-slate-500">No data yet — waiting for the first fetch.</li>
+          <li className="px-6 py-6 text-sm text-slate-500 text-center">
+            No data yet — the daily fetch is running.
+          </li>
         )}
         {rows.map((r, i) => {
           const lake = Array.isArray(r.lakes) ? r.lakes[0] : r.lakes;
@@ -52,15 +79,28 @@ function List({
           const bucket = bucketForTemp(temp);
           return (
             <li key={lake.slug}>
-              <Link href={`/lake/${lake.slug}`} className="flex items-center gap-3 py-3 hover:opacity-90 transition">
-                <span className="w-5 text-center text-xs text-slate-400 tabular-nums">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-deep truncate">{lake.name}</div>
-                  <div className="text-xs text-slate-500">{lake.country_code}</div>
-                </div>
-                <span className="temp-pill text-sm" style={{ backgroundColor: bucket.color }}>
+              <Link
+                href={`/lake/${lake.slug}`}
+                className="group flex items-center gap-3 px-5 sm:px-6 py-3 hover:bg-water-50/70 transition"
+              >
+                <span className="w-5 text-center text-xs font-semibold text-slate-400 tabular-nums shrink-0">
+                  {i + 1}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-medium text-deep truncate group-hover:text-water-700 transition">
+                    {lake.name}
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    {lake.country_code} · {lake.type}
+                  </span>
+                </span>
+                <span
+                  className="rounded-full px-3 py-1 text-xs font-bold text-white shadow-sm tabular-nums shrink-0"
+                  style={{ backgroundColor: bucket.color }}
+                >
                   {formatTemp(temp)}
                 </span>
+                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
               </Link>
             </li>
           );

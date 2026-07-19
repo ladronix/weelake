@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/refresh.ts",
-    "dev":   "tsx watch src/refresh.ts"
+    "dev":   "tsx watch src/refresh.ts",
+    "backfill": "tsx src/backfill.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",

@@ -19,17 +19,23 @@ export async function GET(req: NextRequest) {
   // Location-based
   if (!q && !Number.isNaN(lat) && !Number.isNaN(lng)) {
     const { data, error } = await supabase.rpc("nearest_lakes", {
-      in_lat: lat, in_lng: lng, radius_km: 500, max_results: limit,
+      in_lat: lat, in_lng: lng, radius_km: 800, max_results: limit,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ results: data ?? [], mode: "geo" });
+    return NextResponse.json(
+      { results: data ?? [], mode: "geo" },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   // Text-based
   if (q.length > 0) {
     const { data, error } = await supabase.rpc("search_lakes", { q, max_results: limit });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ results: data ?? [], mode: "text" });
+    return NextResponse.json(
+      { results: data ?? [], mode: "text" },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } },
+    );
   }
 
   return NextResponse.json({ results: [], mode: "empty" });
