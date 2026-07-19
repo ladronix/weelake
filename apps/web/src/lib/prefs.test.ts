@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { toDisplayTemp, unitSymbol } from "./prefs";
+import { resolveInitialPrefs, toDisplayTemp, unitSymbol } from "./prefs";
 
 describe("toDisplayTemp", () => {
   it("returns null for null / undefined / NaN", () => {
@@ -57,5 +57,43 @@ describe("prefs storage", () => {
     const defaults = { unit: "C" as const, lang: "en" as const };
     expect(defaults.unit).toBe("C");
     expect(defaults.lang).toBe("en");
+  });
+});
+
+describe("resolveInitialPrefs", () => {
+  it("returns detected system locale when nothing is stored", () => {
+    const result = resolveInitialPrefs({}, ["cs-CZ", "en"]);
+    expect(result).toEqual({ unit: "C", lang: "cs", langSource: "auto" });
+  });
+
+  it("falls back to English when no supported system locale", () => {
+    const result = resolveInitialPrefs({}, ["fr-FR", "es"]);
+    expect(result).toEqual({ unit: "C", lang: "en", langSource: "auto" });
+  });
+
+  it("respects a stored user choice over the system locale", () => {
+    const result = resolveInitialPrefs(
+      { lang: "de", langSource: "user", unit: "F" },
+      ["cs-CZ"],
+    );
+    expect(result).toEqual({ unit: "F", lang: "de", langSource: "user" });
+  });
+
+  it("re-detects on every load when langSource is auto", () => {
+    // User previously auto-detected as cs, but their device now says de.
+    const result = resolveInitialPrefs(
+      { lang: "cs", langSource: "auto" },
+      ["de-AT"],
+    );
+    expect(result).toEqual({ unit: "C", lang: "de", langSource: "auto" });
+  });
+
+  it("preserves stored unit even when re-detecting language", () => {
+    const result = resolveInitialPrefs(
+      { unit: "F", lang: "cs", langSource: "auto" },
+      ["de"],
+    );
+    expect(result.unit).toBe("F");
+    expect(result.lang).toBe("de");
   });
 });

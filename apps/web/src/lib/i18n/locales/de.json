@@ -1,0 +1,74 @@
+{
+  "nav.map": "Karte",
+  "nav.countries": "Länder",
+  "nav.sources": "Quellen",
+  "nav.openMap": "Karte öffnen",
+  "nav.signIn": "Anmelden",
+  "nav.settings": "Einstellungen",
+
+  "hero.live": "Live · stündliches Update · Für immer kostenlos",
+  "hero.title1": "Jeder See.",
+  "hero.title2": "Eine Karte. Live.",
+  "hero.subtitle": "Live-Wassertemperaturen für Seen weltweit. Ort suchen, Standort teilen und den perfekten Badesee in der Nähe finden. Daten von Copernicus und Open-Meteo.",
+
+  "search.placeholder": "See suchen oder Standort verwenden…",
+  "search.searching": "Suche…",
+  "search.noResults": "Keine Seen gefunden.",
+
+  "stats.lakes": "Seen verfolgt",
+  "stats.countries": "Länder",
+  "stats.warmest": "Am wärmsten",
+  "stats.coldest": "Am kältesten",
+
+  "near.title": "Seen in deiner Nähe",
+  "near.subtitle": "Standort teilen und Badeplätze in der Nähe finden",
+  "near.find": "In der Nähe finden",
+  "near.denied": "Zugriff auf den Standort verweigert. Suche einen See oben oder öffne die Karte.",
+
+  "countries.title": "Nach Land",
+  "countries.subtitle": "Wähle ein Land und sieh alle verfolgten Seen mit aktuellen Wassertemperaturen.",
+
+  "extremes.title": "Heutige Extreme",
+  "extremes.subtitle": "Die wärmsten und kältesten Seen der Welt gerade jetzt.",
+  "extremes.warmest": "Am wärmsten",
+  "extremes.coldest": "Am kältesten",
+
+  "cta.title": "Bereit einzutauchen?",
+  "cta.subtitle": "Öffne die volle Karte. Filter nach Land, Temperatur oder Aktivität. Kostenlos — für immer.",
+  "cta.openMap": "Karte öffnen →",
+
+  "settings.title": "Einstellungen",
+  "settings.units": "Temperatureinheit",
+  "settings.language": "Sprache",
+  "settings.celsius": "Celsius",
+  "settings.fahrenheit": "Fahrenheit",
+  "settings.system": "Systemsprache verwenden",
+  "settings.systemDetected": "Von deinem Gerät erkannt",
+
+  "map.searchArea": "Diesen Bereich durchsuchen",
+  "map.showingArea": "Nur dieser Bereich",
+  "map.layers": "Ebenen",
+  "map.basemap": "Kartenstil",
+  "map.heatmap": "Heatmap",
+  "map.locate": "Mein Standort",
+
+  "filter.title": "Filter",
+  "filter.temperature": "Wassertemperatur",
+  "filter.country": "Land",
+  "filter.type": "Typ",
+  "filter.sortBy": "Sortieren nach",
+  "filter.reset": "Zurücksetzen",
+  "filter.showN": "{n} Seen anzeigen",
+  "filter.showOne": "1 See anzeigen",
+  "filter.presetCold": "❄ Kaltbaden",
+  "filter.presetFresh": "🌊 Frisch",
+  "filter.presetPleasant": "☀ Angenehm",
+  "filter.presetWarm": "🔥 Warm",
+
+  "sort.top": "Empfohlen",
+  "sort.warmest": "Am wärmsten",
+  "sort.coldest": "Am kältesten",
+  "sort.name": "Name",
+  "sort.distance": "Am nächsten",
+  "sort.area": "Am größten"
+}

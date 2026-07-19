@@ -1,0 +1,74 @@
+{
+  "nav.map": "Mapa",
+  "nav.countries": "Země",
+  "nav.sources": "Zdroje",
+  "nav.openMap": "Otevřít mapu",
+  "nav.signIn": "Přihlásit",
+  "nav.settings": "Nastavení",
+
+  "hero.live": "Živě · aktualizace každou hodinu · Zdarma navždy",
+  "hero.title1": "Každé jezero.",
+  "hero.title2": "Jedna mapa. Živě.",
+  "hero.subtitle": "Živé teploty vody jezer po celém světě. Vyhledej jméno, nasdílej polohu a najdi ideální místo ke koupání. Data z Copernicus a Open-Meteo.",
+
+  "search.placeholder": "Vyhledej jezero nebo použij svou polohu…",
+  "search.searching": "Hledám…",
+  "search.noResults": "Žádné jezero neodpovídá dotazu.",
+
+  "stats.lakes": "Sledovaných jezer",
+  "stats.countries": "Zemí",
+  "stats.warmest": "Nejteplejší teď",
+  "stats.coldest": "Nejchladnější teď",
+
+  "near.title": "Jezera poblíž",
+  "near.subtitle": "Sdílej polohu a najdi místa ke koupání ve svém okolí",
+  "near.find": "Najít poblíž",
+  "near.denied": "Přístup k poloze zamítnut. Vyhledej jezero podle jména nebo otevři mapu.",
+
+  "countries.title": "Prozkoumat podle zemí",
+  "countries.subtitle": "Vyber zemi a uvidíš všechna sledovaná jezera s aktuálními teplotami.",
+
+  "extremes.title": "Dnešní extrémy",
+  "extremes.subtitle": "Nejteplejší a nejchladnější jezera na planetě právě teď.",
+  "extremes.warmest": "Nejteplejší právě teď",
+  "extremes.coldest": "Nejchladnější právě teď",
+
+  "cta.title": "Skočíme do toho?",
+  "cta.subtitle": "Otevři plnou mapu. Filtruj podle země, teploty nebo aktivity. Zdarma — navždy.",
+  "cta.openMap": "Otevřít mapu →",
+
+  "settings.title": "Nastavení",
+  "settings.units": "Jednotky teploty",
+  "settings.language": "Jazyk",
+  "settings.celsius": "Celsius",
+  "settings.fahrenheit": "Fahrenheit",
+  "settings.system": "Použít jazyk systému",
+  "settings.systemDetected": "Zjištěno z tvého zařízení",
+
+  "map.searchArea": "Hledat v této oblasti",
+  "map.showingArea": "Pouze v této oblasti",
+  "map.layers": "Vrstvy",
+  "map.basemap": "Podklad",
+  "map.heatmap": "Teplotní mapa",
+  "map.locate": "Najít moji polohu",
+
+  "filter.title": "Filtry",
+  "filter.temperature": "Teplota vody",
+  "filter.country": "Země",
+  "filter.type": "Typ",
+  "filter.sortBy": "Řadit podle",
+  "filter.reset": "Reset",
+  "filter.showN": "Zobrazit {n} jezer",
+  "filter.showOne": "Zobrazit 1 jezero",
+  "filter.presetCold": "❄ Otužování",
+  "filter.presetFresh": "🌊 Svěží",
+  "filter.presetPleasant": "☀ Příjemné",
+  "filter.presetWarm": "🔥 Teplé",
+
+  "sort.top": "Doporučené",
+  "sort.warmest": "Nejteplejší",
+  "sort.coldest": "Nejchladnější",
+  "sort.name": "Podle jména",
+  "sort.distance": "Nejbližší",
+  "sort.area": "Největší"
+}
