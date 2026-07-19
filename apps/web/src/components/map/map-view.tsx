@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import maplibregl, { Map, Marker } from "maplibre-gl";
+import maplibregl, { Map } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Layers, Locate, Minus, Plus, X, Search,
@@ -15,6 +15,40 @@ import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useT, useP } from "@/lib/i18n";
 import { IconButton, TempPill, GlassCard, RelativeTime } from "@/components/ui";
+
+/**
+ * MapLibre `interpolate` colour ramp for water temperature. Steps mirror
+ * `TEMP_BUCKETS` in `lib/temperature.ts` so the same colour law drives the
+ * TempPill component, the heatmap layer, and the cluster/dot layers on the
+ * map. Adding a bucket → update both places.
+ */
+const TEMP_COLOR_RAMP: unknown[] = [
+  "interpolate", ["linear"], ["get", "temp"],
+  0,  "#1E3A8A",
+  5,  "#3B82F6",
+  10, "#22D3EE",
+  15, "#10B981",
+  18, "#FACC15",
+  22, "#F59E0B",
+  26, "#EF4444",
+  30, "#7C2D12",
+];
+
+/**
+ * Same ramp but keyed on a cluster-average temp property. Cluster properties
+ * are aggregated via `clusterProperties` (see the source definition below).
+ */
+const CLUSTER_COLOR_RAMP: unknown[] = [
+  "interpolate", ["linear"], ["/", ["get", "tempSum"], ["get", "tempCount"]],
+  0,  "#1E3A8A",
+  5,  "#3B82F6",
+  10, "#22D3EE",
+  15, "#10B981",
+  18, "#FACC15",
+  22, "#F59E0B",
+  26, "#EF4444",
+  30, "#7C2D12",
+];
 
 interface LakeMarker {
   id: string;
@@ -83,7 +117,6 @@ export function MapView() {
   const t = useT();
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
-  const markersRef = useRef<Marker[]>([]);
   const [lakes, setLakes] = useState<LakeMarker[]>([]);
   const [selected, setSelected] = useState<LakeMarker | null>(null);
   const [showList, setShowList] = useState(true);
@@ -233,36 +266,81 @@ export function MapView() {
     map.setStyle(style as never);
   }, [basemap]);
 
-  // Add / update markers + heatmap layer.
+  // --------------------------------------------------------------------
+  // Add / update the lake layers.
+  //
+  // Rendering strategy (2026-07 refactor):
+  // - One GeoJSON source with `cluster: true`. When the map is zoomed out,
+  //   nearby lakes are aggregated into a single cluster; we style the
+  //   cluster circle by the AVG temperature of its members (so the user
+  //   sees "orange dot" = warm area, "blue dot" = cold area — no chaos
+  //   from N overlapping pills).
+  // - A `symbol` layer draws the temperature-pill labels for INDIVIDUAL
+  //   lakes only when there's room (thanks to MapLibre's automatic
+  //   symbol collision detection: text-allow-overlap defaults to false).
+  //   Zoom-aware `min-zoom` per importance tier keeps the world view
+  //   readable — big lakes visible always, medium from zoom 4, small
+  //   from zoom 6.
+  // - The heatmap layer remains as an optional overlay (toggle).
+  //
+  // Interactivity is bound to the layers via `map.on('click', layerId)`,
+  // not per-DOM-element, so it works with WebGL rendering.
+  // --------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     let cancelled = false;
+
     const doUpdate = () => {
       if (cancelled) return;
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
 
       const features = filtered
         .filter((l) => l.temp_c != null)
         .map((l) => ({
           type: "Feature" as const,
           geometry: { type: "Point" as const, coordinates: [l.lng, l.lat] },
-          properties: { temp: l.temp_c as number, id: l.id },
+          properties: {
+            id: l.id,
+            slug: l.slug,
+            name: l.name,
+            temp: l.temp_c as number,
+            importance: l.importance ?? 0,
+            area: l.area_km2 ?? 0,
+            country: l.country_code,
+          },
         }));
 
       const fc = { type: "FeatureCollection" as const, features };
 
-      const src = map.getSource("lake-temps") as maplibregl.GeoJSONSource | undefined;
-      if (src) {
-        src.setData(fc);
+      const existing = map.getSource("lake-points") as
+        | maplibregl.GeoJSONSource
+        | undefined;
+      if (existing) {
+        existing.setData(fc);
       } else {
-        map.addSource("lake-temps", { type: "geojson", data: fc });
+        // First-time setup: create source + layers.
+        map.addSource("lake-points", {
+          type: "geojson",
+          data: fc,
+          cluster: true,
+          clusterRadius: 55,
+          clusterMaxZoom: 8, // Below zoom 8 aggregate; above show individuals.
+          clusterProperties: {
+            // Two accumulators → runtime avg = tempSum / tempCount.
+            // We avoid a direct "avg" because MapLibre cluster reducers
+            // can't do division across step-by-step accumulation.
+            tempSum: ["+", ["get", "temp"]],
+            tempCount: ["+", 1],
+            maxImportance: ["max", ["get", "importance"]],
+          },
+        });
+
+        // Heatmap — kept as an optional overlay ("Windy-style" view).
         map.addLayer({
           id: "lake-heatmap",
           type: "heatmap",
-          source: "lake-temps",
+          source: "lake-points",
           maxzoom: 9,
           paint: {
             "heatmap-weight": ["interpolate", ["linear"], ["get", "temp"], 0, 0.2, 15, 0.4, 22, 0.8, 30, 1],
@@ -280,44 +358,175 @@ export function MapView() {
             "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.9, 9, 0.35],
           },
         });
+
+        // Cluster bubble — coloured by avg temperature of its members.
+        map.addLayer({
+          id: "lake-clusters",
+          type: "circle",
+          source: "lake-points",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": CLUSTER_COLOR_RAMP as never,
+            "circle-radius": [
+              "step",
+              ["get", "point_count"],
+              18,   // 1-9 lakes
+              10, 22,
+              25, 28,
+              50, 34,
+              100, 40,
+            ],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "rgba(255,255,255,0.9)",
+            "circle-opacity": 0.92,
+          },
+        });
+
+        // Cluster count label.
+        map.addLayer({
+          id: "lake-cluster-count",
+          type: "symbol",
+          source: "lake-points",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": "{point_count_abbreviated}",
+            "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+            "text-size": 13,
+            "text-allow-overlap": true,
+          },
+          paint: {
+            "text-color": "#ffffff",
+            "text-halo-color": "rgba(0,0,0,0.35)",
+            "text-halo-width": 1,
+          },
+        });
+
+        // Individual lake temperature pill. Collision detection is on by
+        // default (text-allow-overlap: false), so labels thin themselves
+        // out as you zoom out. `minzoom` per-layer keeps small lakes hidden
+        // until they can actually be told apart.
+        map.addLayer({
+          id: "lake-labels",
+          type: "symbol",
+          source: "lake-points",
+          filter: ["!", ["has", "point_count"]],
+          layout: {
+            "text-field": [
+              "concat",
+              ["number-format", ["get", "temp"], { "min-fraction-digits": 0, "max-fraction-digits": 0 }],
+              "°",
+            ],
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+            "text-size": [
+              "interpolate", ["linear"], ["zoom"],
+              3, 10,
+              6, 12,
+              9, 13,
+            ],
+            "text-allow-overlap": false,
+            "text-ignore-placement": false,
+            // Sort so the highest-importance labels place first — they
+            // "win" any collision with a less-important neighbour.
+            "symbol-sort-key": ["-", 10, ["get", "importance"]],
+            "text-padding": 4,
+          },
+          paint: {
+            "text-color": "#ffffff",
+            "text-halo-color": TEMP_COLOR_RAMP as never,
+            "text-halo-width": 8, // Halo acts as the pill background.
+            "text-halo-blur": 0.3,
+          },
+        });
+
+        // Small always-visible marker under the label so users can still
+        // see something is there even when the label gets collision-hidden.
+        map.addLayer(
+          {
+            id: "lake-dots",
+            type: "circle",
+            source: "lake-points",
+            filter: ["!", ["has", "point_count"]],
+            paint: {
+              "circle-color": TEMP_COLOR_RAMP as never,
+              "circle-radius": [
+                "interpolate", ["linear"], ["zoom"],
+                2, 2,
+                6, 4,
+                10, 6,
+              ],
+              "circle-stroke-width": 1.5,
+              "circle-stroke-color": "rgba(255,255,255,0.9)",
+            },
+          },
+          "lake-labels", // Draw dots *below* labels.
+        );
+
+        // Interactions: click on cluster → expand.
+        map.on("click", "lake-clusters", async (e) => {
+          const feats = map.queryRenderedFeatures(e.point, { layers: ["lake-clusters"] });
+          const first = feats[0];
+          if (!first?.properties?.cluster_id) return;
+          const clusterId = first.properties.cluster_id as number;
+          const src = map.getSource("lake-points") as maplibregl.GeoJSONSource;
+          const zoom = await src.getClusterExpansionZoom(clusterId);
+          if (first.geometry.type !== "Point") return;
+          const [lng, lat] = first.geometry.coordinates;
+          map.easeTo({ center: [lng, lat], zoom, duration: 700 });
+        });
+
+        // Click on individual dot / label → open detail sheet.
+        const openFeature = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          const props = f.properties as { id: string; slug: string };
+          const target = filtered.find((l) => l.id === props.id);
+          if (!target || f.geometry.type !== "Point") return;
+          const [lng, lat] = f.geometry.coordinates;
+          setSelected(target);
+          map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 7), duration: 700 });
+        };
+        map.on("click", "lake-labels", openFeature);
+        map.on("click", "lake-dots", openFeature);
+
+        // Hover tooltip (desktop only — mobile taps go straight to select).
+        const onEnter = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+          map.getCanvas().style.cursor = "pointer";
+          const f = e.features?.[0];
+          if (!f) return;
+          const props = f.properties as { id: string };
+          const target = filtered.find((l) => l.id === props.id);
+          if (target) {
+            const p = map.project(e.lngLat);
+            setHovered({ lake: target, x: p.x, y: p.y });
+          }
+        };
+        const onLeave = () => {
+          map.getCanvas().style.cursor = "";
+          setHovered(null);
+        };
+        map.on("mouseenter", "lake-labels", onEnter);
+        map.on("mouseleave", "lake-labels", onLeave);
+        map.on("mouseenter", "lake-dots", onEnter);
+        map.on("mouseleave", "lake-dots", onLeave);
+        map.on("mouseenter", "lake-clusters", () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", "lake-clusters", () => {
+          map.getCanvas().style.cursor = "";
+        });
       }
+
       if (map.getLayer("lake-heatmap")) {
         map.setLayoutProperty("lake-heatmap", "visibility", showHeatmap ? "visible" : "none");
       }
-
-      filtered.forEach((l) => {
-        const bucket = bucketForTemp(l.temp_c);
-        const el = document.createElement("button");
-        el.type = "button";
-        el.setAttribute("aria-label", `${l.name} · ${formatTemp(l.temp_c)}`);
-        el.setAttribute("data-lake-slug", l.slug);
-        el.style.background = bucket.color;
-        el.className =
-          "flex items-center justify-center min-w-[38px] h-[28px] px-2.5 rounded-full text-white text-[11.5px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.25)] ring-2 ring-white hover:scale-125 hover:z-10 transition-transform duration-150 tabular-nums cursor-pointer";
-        el.textContent = l.temp_c != null ? `${l.temp_c.toFixed(0)}°` : "?";
-        el.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          setSelected(l);
-          setHovered(null);
-          map.easeTo({ center: [l.lng, l.lat], zoom: Math.max(map.getZoom(), 7), duration: 700 });
-        });
-        el.addEventListener("mouseenter", () => {
-          const p = map.project([l.lng, l.lat]);
-          setHovered({ lake: l, x: p.x, y: p.y });
-        });
-        el.addEventListener("mouseleave", () => setHovered(null));
-
-        const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-          .setLngLat([l.lng, l.lat])
-          .addTo(map);
-        markersRef.current.push(marker);
-      });
     };
 
     if (map.isStyleLoaded()) doUpdate();
     else map.once("load", doUpdate);
 
-    const onStyleData = () => { if (map.isStyleLoaded()) doUpdate(); };
+    const onStyleData = () => {
+      if (map.isStyleLoaded()) doUpdate();
+    };
     map.on("styledata", onStyleData);
 
     return () => {
