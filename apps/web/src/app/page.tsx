@@ -6,6 +6,7 @@ import { NearYou } from "@/components/landing/near-you";
 import { CountryGrid } from "@/components/landing/country-grid";
 import { HotColdLists } from "@/components/landing/hot-cold-lists";
 import { MiniMapPreview } from "@/components/landing/mini-map-preview";
+import { StickySearch } from "@/components/landing/sticky-search";
 import { Nav } from "@/components/layout/nav";
 import { Footer } from "@/components/layout/footer";
 
@@ -31,6 +32,8 @@ export default function LandingPage() {
         <Hero>
           <LakeSearch autofocus />
         </Hero>
+
+        <StickySearch />
 
         <section className="section mt-4 sm:mt-8">
           <Suspense fallback={<StatsSkeleton />}>

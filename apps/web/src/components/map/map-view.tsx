@@ -94,6 +94,9 @@ export function MapView() {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("importance");
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [visibleOnly, setVisibleOnly] = useState(false);
+  const [bounds, setBounds] = useState<{ n: number; s: number; e: number; w: number } | null>(null);
+  const [hovered, setHovered] = useState<{ lake: LakeMarker; x: number; y: number } | null>(null);
 
   // Fetch lakes once.
   useEffect(() => {
@@ -114,6 +117,10 @@ export function MapView() {
         const hay = `${l.name} ${l.name_local ?? ""} ${l.country_code}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
+      if (visibleOnly && bounds) {
+        if (l.lat < bounds.s || l.lat > bounds.n) return false;
+        if (l.lng < bounds.w || l.lng > bounds.e) return false;
+      }
       return true;
     });
     switch (sortBy) {
@@ -123,7 +130,7 @@ export function MapView() {
       default:        arr = arr.slice().sort((a, b) => b.importance - a.importance);
     }
     return arr;
-  }, [lakes, countryFilter, typeFilter, tempRange, query, sortBy]);
+  }, [lakes, countryFilter, typeFilter, tempRange, query, sortBy, visibleOnly, bounds]);
 
   const countries = useMemo(
     () => Array.from(new Set(lakes.map((l) => l.country_code))).sort(),
@@ -153,8 +160,21 @@ export function MapView() {
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
+    const updateBounds = () => {
+      const b = map.getBounds();
+      setBounds({
+        n: b.getNorth(),
+        s: b.getSouth(),
+        e: b.getEast(),
+        w: b.getWest(),
+      });
+    };
+    map.on("moveend", updateBounds);
+    map.once("load", updateBounds);
+
     mapRef.current = map;
     return () => {
+      map.off("moveend", updateBounds);
       map.remove();
       mapRef.current = null;
     };
@@ -226,6 +246,7 @@ export function MapView() {
         const el = document.createElement("button");
         el.type = "button";
         el.setAttribute("aria-label", `${l.name} · ${formatTemp(l.temp_c)}`);
+        el.setAttribute("data-lake-slug", l.slug);
         el.style.background = bucket.color;
         el.className =
           "flex items-center justify-center min-w-[38px] h-[28px] px-2.5 rounded-full text-white text-[11.5px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.25)] ring-2 ring-white hover:scale-125 hover:z-10 transition-transform duration-150 tabular-nums cursor-pointer";
@@ -233,8 +254,14 @@ export function MapView() {
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();
           setSelected(l);
+          setHovered(null);
           map.easeTo({ center: [l.lng, l.lat], zoom: Math.max(map.getZoom(), 7), duration: 700 });
         });
+        el.addEventListener("mouseenter", () => {
+          const p = map.project([l.lng, l.lat]);
+          setHovered({ lake: l, x: p.x, y: p.y });
+        });
+        el.addEventListener("mouseleave", () => setHovered(null));
 
         const marker = new maplibregl.Marker({ element: el, anchor: "center" })
           .setLngLat([l.lng, l.lat])
@@ -402,6 +429,45 @@ export function MapView() {
             )}
           </button>
         </div>
+
+        {/* Search-this-area toggle */}
+        <button
+          onClick={() => setVisibleOnly((v) => !v)}
+          className={cn(
+            "absolute top-4 left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-1.5 rounded-full shadow-lg px-4 py-2 text-xs font-semibold transition border",
+            visibleOnly
+              ? "bg-water-500 text-white border-water-600"
+              : "bg-white/95 backdrop-blur text-water-800 border-white/60 hover:bg-white",
+          )}
+          title={visibleOnly ? "Show all lakes" : "Only show lakes in current view"}
+        >
+          <MapIcon className="h-3.5 w-3.5" />
+          {visibleOnly ? "Showing this area only" : "Search this area"}
+        </button>
+
+        {/* Hover tooltip */}
+        {hovered && !selected && (
+          <div
+            className="hidden md:block absolute z-40 pointer-events-none transition-opacity"
+            style={{ left: hovered.x, top: hovered.y - 12, transform: "translate(-50%, -100%)" }}
+          >
+            <div className="rounded-2xl bg-white/95 backdrop-blur-md border border-white/60 shadow-[0_8px_30px_rgba(14,165,233,0.20)] px-3 py-2 min-w-[180px]">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+                {hovered.lake.country_code} · {hovered.lake.type}
+              </div>
+              <div className="text-sm font-semibold text-deep truncate">{hovered.lake.name}</div>
+              <div className="mt-1 flex items-center gap-2">
+                <TempPill temp={hovered.lake.temp_c} size="sm" />
+                {hovered.lake.area_km2 && (
+                  <span className="text-[11px] text-slate-500 tabular-nums">
+                    {Number(hovered.lake.area_km2).toFixed(1)} km²
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="mx-auto h-2 w-2 rotate-45 bg-white -mt-1 border-r border-b border-white/60 shadow-[0_2px_4px_rgba(14,165,233,0.10)]" />
+          </div>
+        )}
 
         {/* Right controls stack — pushed below the mobile top bar */}
         <div className="absolute top-4 right-4 z-20 flex flex-col gap-2 items-end md:top-4 pt-[52px] md:pt-0">
