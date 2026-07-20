@@ -9,6 +9,7 @@ import {
   Layers, Locate, Minus, Plus, X, Search,
   Thermometer, Waves, Filter, ChevronRight, ChevronLeft, ChevronUp,
   Sparkles, Navigation2, Map as MapIcon, Moon, Sun, CloudRain,
+  Satellite as SatIcon,
 } from "lucide-react";
 import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
@@ -67,14 +68,42 @@ interface LakeMarker {
   photo_url?: string | null;
 }
 
-type BasemapKey = "light" | "dark";
+type BasemapKey = "light" | "dark" | "streets" | "satellite";
 
-// Style URLs — all free, no API key required. Both use OpenStreetMap
-// data via CARTO's Positron / Dark Matter styles: minimal-clutter road
-// networks and clean water-first colour palettes.
+// Style URLs — all free, no API key required. Kept intentionally small:
+//   - light / dark : CARTO Positron / Dark Matter (OSM data, minimal road
+//                    clutter, water-first palette). Default is 'light'.
+//   - streets      : CARTO Voyager (OSM data, roads + POIs visible; good
+//                    when the user is scouting a drive to a lake).
+//   - satellite    : Esri World Imagery (aerial photography, no labels).
 const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style: unknown }> = {
   light: { label: "Light", icon: Sun,  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
   dark:  { label: "Dark",  icon: Moon, style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
+  streets: {
+    label: "Streets",
+    icon: MapIcon,
+    style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+  },
+  satellite: {
+    label: "Satellite",
+    icon: SatIcon,
+    style: {
+      version: 8,
+      sources: {
+        esri: {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          attribution:
+            "Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+        },
+      },
+      layers: [{ id: "esri", type: "raster", source: "esri" }],
+      glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    },
+  },
 };
 
 type SortKey = "importance" | "warmest" | "coldest" | "name" | "distance" | "area";
@@ -210,6 +239,12 @@ export function MapView() {
   const filteredRef = useRef<LakeMarker[]>([]);
   useEffect(() => { filteredRef.current = filtered; }, [filtered]);
 
+  // Remember the camera position from just BEFORE the user zoomed into
+  // a selected lake, so we can smoothly fly back when the sheet closes.
+  // A ref (not state) — no rerenders needed, and we clear it as soon
+  // as the sheet closes so a subsequent open doesn't restore stale.
+  const preZoomCameraRef = useRef<{ center: [number, number]; zoom: number } | null>(null);
+
   const countries = useMemo(
     () => Array.from(new Set(lakes.map((l) => l.country_code))).sort(),
     [lakes],
@@ -256,7 +291,15 @@ export function MapView() {
     mapRef.current = map;
     return () => {
       map.off("moveend", updateBounds);
-      map.remove();
+      // Under React StrictMode / HMR the effect can unmount while the
+      // initial style fetch is still in flight; `map.remove()` will
+      // then throw an AbortError as MapLibre tries to reject the
+      // pending request. Swallow it — the map is going away anyway.
+      try {
+        map.remove();
+      } catch {
+        /* aborted style fetch — harmless during dev remounts */
+      }
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,6 +409,10 @@ export function MapView() {
         type: "heatmap",
         source: "lake-points",
         maxzoom: 9,
+        // Skip cluster features — they don't carry a `temp` property
+        // (only tempSum + tempCount aggregates), which triggers a null
+        // warning inside the heatmap-weight interpolate expression.
+        filter: ["!", ["has", "point_count"]],
         paint: {
           "heatmap-weight": ["interpolate", ["linear"], ["get", "temp"], 0, 0.2, 15, 0.4, 22, 0.8, 30, 1],
           "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.6, 9, 3],
@@ -499,6 +546,13 @@ export function MapView() {
         const target = filteredRef.current.find((l) => l.id === props.id);
         if (!target || f.geometry.type !== "Point") return;
         const [lng, lat] = f.geometry.coordinates;
+        // Remember where the user was before we zoom in, so closing the
+        // sheet can smoothly fly them back. Only capture on the FIRST
+        // open — a second click without closing shouldn't overwrite.
+        if (!preZoomCameraRef.current) {
+          const c = map.getCenter();
+          preZoomCameraRef.current = { center: [c.lng, c.lat], zoom: map.getZoom() };
+        }
         setSelected(target);
         map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 7), duration: 700 });
       };
@@ -767,9 +821,33 @@ export function MapView() {
   };
 
   const openLake = (l: LakeMarker) => {
+    const map = mapRef.current;
+    // Same pre-zoom capture as the layer-click path (see openFeature)
+    // so a list-driven open + close cycle also flies the user back.
+    if (map && !preZoomCameraRef.current) {
+      const c = map.getCenter();
+      preZoomCameraRef.current = { center: [c.lng, c.lat], zoom: map.getZoom() };
+    }
     setSelected(l);
-    mapRef.current?.easeTo({ center: [l.lng, l.lat], zoom: 9, duration: 700 });
+    map?.easeTo({ center: [l.lng, l.lat], zoom: 9, duration: 700 });
     setMobilePanel("peek");
+  };
+
+  /**
+   * Close the selected-lake sheet and smoothly fly the camera back to
+   * the position + zoom the user was at before they clicked into the
+   * lake. If there was no pre-zoom capture (e.g. user opened via a
+   * deep link with ?focus=slug) we just clear the selection and leave
+   * the camera where it is.
+   */
+  const closeSelected = () => {
+    const map = mapRef.current;
+    const restore = preZoomCameraRef.current;
+    preZoomCameraRef.current = null;
+    setSelected(null);
+    if (map && restore) {
+      map.easeTo({ center: restore.center, zoom: restore.zoom, duration: 700 });
+    }
   };
 
   return (
@@ -781,7 +859,7 @@ export function MapView() {
       <aside
         className={cn(
           "hidden md:flex flex-col",
-          "absolute left-3 top-[76px] bottom-24 w-[340px] lg:w-[380px] z-30",
+          "absolute left-3 top-[112px] bottom-24 w-[340px] lg:w-[380px] z-30",
           "rounded-3xl bg-white/95 backdrop-blur-xl border border-white/60",
           "shadow-[0_10px_40px_rgba(14,165,233,0.20)] overflow-hidden",
           !showList && "md:hidden",
@@ -816,7 +894,7 @@ export function MapView() {
             type="button"
             onClick={() => setShowList(true)}
             className={cn(
-              "hidden md:inline-flex absolute top-[76px] left-3 z-30",
+              "hidden md:inline-flex absolute top-[112px] left-3 z-30",
               "h-11 w-11 items-center justify-center",
               "rounded-full bg-white/95 backdrop-blur-xl border border-white/60",
               "shadow-[0_8px_30px_rgba(14,165,233,0.20)] text-water-700",
@@ -833,11 +911,11 @@ export function MapView() {
         )}
 
         {/* Mobile: top search + filter — sits below the floating nav */}
-        <div className="md:hidden absolute top-[68px] left-3 right-3 z-30 flex gap-2 items-center">
+        <div className="md:hidden absolute top-[100px] left-3 right-3 z-30 flex gap-2 items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
             <input
-              type="search"
+              type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("map.searchLakes")}
@@ -873,7 +951,7 @@ export function MapView() {
             map bounds. Replaces the old separate '{n} lakes' pill that
             lived inside the sidebar and the standalone 'Search this
             area' pill floating above. */}
-        <div className="hidden md:flex absolute top-[76px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
+        <div className="hidden md:flex absolute top-[112px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
           <span className="text-sm font-semibold text-deep tabular-nums">
             {p("map.lakesShown", filtered.length)}
           </span>
@@ -916,53 +994,11 @@ export function MapView() {
           </div>
         )}
 
-        {/* Right controls stack — zoom / locate / reset only. Layers
-            (heatmap + future rain radar) moved to the bottom-left so
-            they sit next to the temperature legend they're about. */}
-        <div className="absolute top-[76px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
-          <div className="flex flex-col rounded-full bg-white/95 backdrop-blur shadow-lg overflow-hidden border border-white/60">
-            <button
-              onClick={() => zoom(1)}
-              className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition border-b border-water-100"
-              aria-label={t("map.zoomIn")}
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => zoom(-1)}
-              className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition"
-              aria-label={t("map.zoomOut")}
-            >
-              <Minus className="h-5 w-5" />
-            </button>
-          </div>
-
-          <IconButton
-            icon={<Locate className="h-5 w-5" />}
-            variant="primary"
-            onClick={doLocate}
-            aria-label={t("map.locate")}
-          />
-
-          <IconButton
-            icon={<Navigation2 className="h-4 w-4" />}
-            onClick={centerWorld}
-            aria-label={t("map.resetView")}
-          />
-        </div>
-
-        {/* Temperature legend + Layers control — bottom-left cluster.
-            Sits to the right of the side panel when it's open so nothing
-            overlaps; slides back to the left edge when the panel is
-            collapsed. Layers popover expands UPWARDS on hover so it
-            stays visible over the map without covering the legend
-            itself. */}
-        <div
-          className={cn(
-            "hidden md:flex absolute bottom-4 z-10 items-center gap-2 transition-[left] duration-200",
-            showList ? "left-[calc(340px+1.5rem)] lg:left-[calc(380px+1.5rem)]" : "left-4",
-          )}
-        >
+        {/* Right controls stack — Layers menu on top, then zoom /
+            locate / reset. Extra top offset (top-[112px]) gives a
+            clear vertical gap between the floating nav pill and the
+            first map control, per user feedback. */}
+        <div className="absolute top-[112px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
           <div className="relative">
             <button
               type="button"
@@ -981,10 +1017,10 @@ export function MapView() {
               <Layers className="h-5 w-5" aria-hidden="true" />
             </button>
             {showLayerMenu && (
-              <GlassCard variant="light" className="absolute left-0 bottom-14 w-64 p-3 z-50">
+              <GlassCard variant="light" className="absolute right-0 top-14 w-64 p-3 z-50">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.basemap")}</div>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {(["light", "dark"] as BasemapKey[]).map((k) => {
+                  {(["light", "dark", "streets", "satellite"] as BasemapKey[]).map((k) => {
                     const B = BASEMAPS[k];
                     const Icon = B.icon;
                     return (
@@ -1024,8 +1060,6 @@ export function MapView() {
                     )} />
                   </span>
                 </label>
-
-                {/* Rain radar — RainViewer NEXRAD tiles, past 2h. */}
                 <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
                   <span className="flex items-center gap-2 text-sm text-slate-700">
                     <CloudRain className="h-4 w-4 text-water-600" aria-hidden="true" /> {t("map.rainRadar")}
@@ -1049,22 +1083,55 @@ export function MapView() {
             )}
           </div>
 
-          <div className="rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 flex items-center gap-2 text-[11px] font-medium text-slate-700 border border-white/60">
-            <Waves className="h-3.5 w-3.5 text-water-600" aria-hidden="true" />
-            <span className="tabular-nums">-5°</span>
-            <span
-              className="h-2 w-40 rounded-full"
-              style={{ background: "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)" }}
-            />
-            <span className="tabular-nums">35°</span>
+          <div className="flex flex-col rounded-full bg-white/95 backdrop-blur shadow-lg overflow-hidden border border-white/60">
+            <button
+              onClick={() => zoom(1)}
+              className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition border-b border-water-100"
+              aria-label={t("map.zoomIn")}
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => zoom(-1)}
+              className="h-10 w-10 flex items-center justify-center text-water-700 hover:bg-water-50 transition"
+              aria-label={t("map.zoomOut")}
+            >
+              <Minus className="h-5 w-5" />
+            </button>
           </div>
+
+          <IconButton
+            icon={<Locate className="h-5 w-5" />}
+            variant="primary"
+            onClick={doLocate}
+            aria-label={t("map.locate")}
+          />
+
+          <IconButton
+            icon={<Navigation2 className="h-4 w-4" />}
+            onClick={centerWorld}
+            aria-label={t("map.resetView")}
+          />
+        </div>
+
+        {/* Temperature legend — pinned bottom-right. Independent of
+            the side panel, so it stays visible whether the list is open
+            or collapsed. */}
+        <div className="hidden md:flex absolute bottom-4 right-4 z-10 items-center gap-2 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 text-[11px] font-medium text-slate-700 border border-white/60">
+          <Waves className="h-3.5 w-3.5 text-water-600" aria-hidden="true" />
+          <span className="tabular-nums">-5°</span>
+          <span
+            className="h-2 w-40 rounded-full"
+            style={{ background: "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)" }}
+          />
+          <span className="tabular-nums">35°</span>
         </div>
 
         {/* Selected sheet — floats top-right on desktop, above bottom sheet on mobile */}
         {selected && (
           <SelectedSheet
             lake={selected}
-            onClose={() => setSelected(null)}
+            onClose={closeSelected}
           />
         )}
 
@@ -1144,7 +1211,7 @@ function SidebarContent(props: {
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" aria-hidden="true" />
             <input
-              type="search"
+              type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("map.searchLakes")}
