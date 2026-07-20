@@ -702,11 +702,17 @@ export function MapView() {
   };
 
   return (
-    <div className="relative h-full w-full flex overflow-hidden bg-water-50 min-h-0">
-      {/* Desktop side list — pt-[76px] leaves room for the floating nav on top. */}
+    <div className="relative h-full w-full overflow-hidden bg-water-50 min-h-0">
+      {/* Desktop floating side panel — an overlay on top of the map, not
+          a flex column that pushes the map aside. Anchored to the top-
+          left, sized to leave room for the floating nav above and the
+          temperature legend below. */}
       <aside
         className={cn(
-          "hidden md:flex flex-col w-[340px] lg:w-[400px] h-full bg-white/85 backdrop-blur-xl border-r border-white/60 shadow-[0_0_40px_rgba(14,165,233,0.08)] z-20 min-h-0 pt-[76px]",
+          "hidden md:flex flex-col",
+          "absolute left-3 top-[76px] bottom-24 w-[340px] lg:w-[380px] z-30",
+          "rounded-3xl bg-white/95 backdrop-blur-xl border border-white/60",
+          "shadow-[0_10px_40px_rgba(14,165,233,0.20)] overflow-hidden",
           !showList && "md:hidden",
         )}
       >
@@ -724,20 +730,36 @@ export function MapView() {
           sortBy={sortBy} setSortBy={setSortBy}
           onOpen={openLake}
           hasLocation={!!userLoc}
+          onCollapse={() => setShowList(false)}
         />
       </aside>
 
       {/* Map canvas + overlays */}
-      <div className="relative flex-1 h-full min-h-0">
+      <div className="relative h-full w-full min-h-0">
         <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
-        {/* Desktop: toggle list */}
-        <IconButton
-          icon={showList ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-          onClick={() => setShowList((v) => !v)}
-          className="hidden md:inline-flex absolute top-[76px] left-4 z-30"
-          aria-label={showList ? t("map.hideList") : t("map.showList")}
-        />
+        {/* Desktop: pulsing search icon when the panel is collapsed.
+            Click expands the panel back. */}
+        {!showList && (
+          <button
+            type="button"
+            onClick={() => setShowList(true)}
+            className={cn(
+              "hidden md:inline-flex absolute top-[76px] left-3 z-30",
+              "h-11 w-11 items-center justify-center",
+              "rounded-full bg-white/95 backdrop-blur-xl border border-white/60",
+              "shadow-[0_8px_30px_rgba(14,165,233,0.20)] text-water-700",
+              "hover:bg-white hover:scale-105 transition",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2",
+              "before:content-[''] before:absolute before:inset-0 before:rounded-full",
+              "before:bg-water-400/50 before:animate-ping before:-z-10",
+            )}
+            aria-label={t("map.showList")}
+            title={t("map.showList")}
+          >
+            <Search className="h-5 w-5" aria-hidden="true" />
+          </button>
+        )}
 
         {/* Mobile: top search + filter — sits below the floating nav */}
         <div className="md:hidden absolute top-[68px] left-3 right-3 z-30 flex gap-2 items-center">
@@ -969,6 +991,7 @@ function SidebarContent(props: {
   sortBy: SortKey; setSortBy: (v: SortKey) => void;
   onOpen: (l: LakeMarker) => void;
   hasLocation: boolean;
+  onCollapse?: () => void;
 }) {
   const {
     filtered, countries, types,
@@ -982,29 +1005,66 @@ function SidebarContent(props: {
     sortBy, setSortBy,
     hasLocation,
     onOpen,
+    onCollapse,
   } = props;
   const t = useT();
   const p = useP();
+  // Filters section is collapsed by default so the panel opens as just
+  // "search + list"; users tap the funnel icon to open the drawer.
+  const [showFilters, setShowFilters] = useState(false);
 
   return (
     <>
       <div className="p-4 border-b border-water-100/70 space-y-3 shrink-0">
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("map.searchLakes")}
-            className="w-full rounded-full border border-water-200/70 bg-white/90 pl-10 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-water-400"
-          />
-          {query && (
+        {/* Search bar + collapse + filter-toggle */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("map.searchLakes")}
+              className="w-full rounded-full border border-water-200/70 bg-white/90 pl-10 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-water-400"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
+                aria-label={t("map.clear")}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className={cn(
+              "h-10 w-10 rounded-full flex items-center justify-center transition shrink-0",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500",
+              showFilters
+                ? "bg-water-500 text-white shadow"
+                : "bg-water-50 text-water-700 hover:bg-water-100",
+            )}
+            aria-label={t("filter.title")}
+            aria-expanded={showFilters}
+          >
+            <Filter className="h-4 w-4" aria-hidden="true" />
+          </button>
+          {onCollapse && (
             <button
-              onClick={() => setQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-700"
-              aria-label={t("map.clear")}
+              type="button"
+              onClick={onCollapse}
+              className={cn(
+                "hidden md:inline-flex h-10 w-10 rounded-full items-center justify-center shrink-0 transition",
+                "bg-water-50 text-water-700 hover:bg-water-100",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500",
+              )}
+              aria-label={t("map.hideList")}
+              title={t("map.hideList")}
             >
-              <X className="h-3.5 w-3.5" />
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -1030,11 +1090,17 @@ function SidebarContent(props: {
             </button>
           )}
         </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <label>
-            <span className="text-slate-500 font-medium">{t("filter.country")}</span>
-            <select
+      {/* Filters drawer inside the panel — collapsed by default. Same
+          controls as before, wrapped so the panel stays compact when
+          the user just wants to browse the list. */}
+      {showFilters && (
+        <div className="p-4 border-b border-water-100/70 space-y-3 shrink-0 max-h-[45%] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <label>
+              <span className="text-slate-500 font-medium">{t("filter.country")}</span>
+              <select
               value={countryFilter}
               onChange={(e) => setCountryFilter(e.target.value)}
               className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-1.5 outline-none focus:ring-2 focus:ring-water-400"
@@ -1172,7 +1238,8 @@ function SidebarContent(props: {
             />
           </span>
         </label>
-      </div>
+        </div>
+      )}
 
       <ul className="flex-1 overflow-y-auto divide-y divide-water-100/50 no-scrollbar">
         {filtered.length === 0 && (
