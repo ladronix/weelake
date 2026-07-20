@@ -1114,10 +1114,16 @@ export function MapView() {
           />
         </div>
 
-        {/* Temperature legend — pinned bottom-right. Independent of
-            the side panel, so it stays visible whether the list is open
-            or collapsed. */}
-        <div className="hidden md:flex absolute bottom-4 right-4 z-10 items-center gap-2 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 text-[11px] font-medium text-slate-700 border border-white/60">
+        {/* Temperature legend — pinned bottom-right, always visible.
+            Independent of the side panel state, but slides horizontally
+            to the LEFT of the SelectedSheet (380px + gap) when a lake
+            is selected so the two don't overlap. */}
+        <div
+          className={cn(
+            "hidden md:flex absolute bottom-4 z-10 items-center gap-2 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 text-[11px] font-medium text-slate-700 border border-white/60 transition-[right] duration-200",
+            selected ? "right-[calc(380px+1.5rem)]" : "right-4",
+          )}
+        >
           <Waves className="h-3.5 w-3.5 text-water-600" aria-hidden="true" />
           <span className="tabular-nums">-5°</span>
           <span
