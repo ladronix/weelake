@@ -291,11 +291,44 @@ export function MapView() {
   }, []);
 
   // Switch basemap.
+  //
+  // MapLibre's `setStyle()` wipes any runtime-added source/layer by
+  // default. Its `transformStyle(previous, next)` callback lets us
+  // splice our custom stuff into the new style before it's committed,
+  // so the swap is atomic — no flicker, no missing layers.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const style = BASEMAPS[basemap].style;
-    map.setStyle(style as never);
+
+    // transformStyle receives the previous fully-loaded style spec
+    // (may be null on the very first call) and the incoming style
+    // spec. We return a merged style that carries our lake-points
+    // source + lake-* layers over.
+    type StyleSpec = {
+      sources?: Record<string, unknown>;
+      layers?: Array<{ id: string; [k: string]: unknown }>;
+      [k: string]: unknown;
+    };
+    const transformStyle = (previous: StyleSpec | null | undefined, next: StyleSpec): StyleSpec => {
+      if (!previous) return next;
+      const keepSources: Record<string, unknown> = {};
+      const keepLayers: Array<{ id: string; [k: string]: unknown }> = [];
+      const KEEP_PREFIXES = ["lake-", "user-loc"];
+      for (const [id, src] of Object.entries(previous.sources ?? {})) {
+        if (KEEP_PREFIXES.some((p) => id.startsWith(p))) keepSources[id] = src;
+      }
+      for (const layer of previous.layers ?? []) {
+        if (KEEP_PREFIXES.some((p) => layer.id.startsWith(p))) keepLayers.push(layer);
+      }
+      return {
+        ...next,
+        sources: { ...(next.sources ?? {}), ...keepSources },
+        layers: [...(next.layers ?? []), ...keepLayers],
+      };
+    };
+
+    map.setStyle(style as never, { diff: false, transformStyle } as never);
   }, [basemap]);
 
   // --------------------------------------------------------------------
@@ -318,15 +351,265 @@ export function MapView() {
   // Interactivity is bound to the layers via `map.on('click', layerId)`,
   // not per-DOM-element, so it works with WebGL rendering.
   // --------------------------------------------------------------------
+  // --------------------------------------------------------------------
+  // Install the lake source + layers.
+  //
+  // MapLibre's `setStyle()` wipes any source/layer we added at runtime
+  // (they're not part of the style spec MapLibre knows about). The only
+  // event that fires reliably ONCE per new style, after glyphs + tiles
+  // are ready, is `style.load`. So we install here every time that
+  // fires — first mount + every basemap switch — and rely on the
+  // separate data effect to keep the source up to date without a
+  // reinstall.
+  //
+  // Interactions (click on cluster / dot / label) are bound once here
+  // per style. `filteredRef.current` is used inside the click closure
+  // so it always sees the newest array (see also the useRef mirror).
+  // --------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    let cancelled = false;
+    const installLayers = () => {
+      // Guard: don't re-install if source is already present (e.g. HMR).
+      if (map.getSource("lake-points")) return;
 
-    const doUpdate = () => {
-      if (cancelled) return;
+      const emptyFc = { type: "FeatureCollection" as const, features: [] as never[] };
 
+      map.addSource("lake-points", {
+        type: "geojson",
+        data: emptyFc,
+        cluster: true,
+        clusterRadius: 55,
+        clusterMaxZoom: 8,
+        clusterProperties: {
+          tempSum: ["+", ["get", "temp"]],
+          tempCount: ["+", 1],
+          maxImportance: ["max", ["get", "importance"]],
+        },
+      });
+
+      map.addLayer({
+        id: "lake-heatmap",
+        type: "heatmap",
+        source: "lake-points",
+        maxzoom: 9,
+        paint: {
+          "heatmap-weight": ["interpolate", ["linear"], ["get", "temp"], 0, 0.2, 15, 0.4, 22, 0.8, 30, 1],
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.6, 9, 3],
+          "heatmap-color": [
+            "interpolate", ["linear"], ["heatmap-density"],
+            0,   "rgba(30, 58, 138, 0)",
+            0.2, "rgba(59, 130, 246, 0.5)",
+            0.4, "rgba(34, 211, 238, 0.6)",
+            0.6, "rgba(250, 204, 21, 0.7)",
+            0.8, "rgba(239, 68, 68, 0.85)",
+            1,   "rgba(124, 45, 18, 0.9)",
+          ],
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 4, 30, 9, 60],
+          "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.9, 9, 0.35],
+        },
+      });
+
+      map.addLayer({
+        id: "lake-clusters",
+        type: "circle",
+        source: "lake-points",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": CLUSTER_COLOR_RAMP as never,
+          "circle-radius": [
+            "step",
+            ["get", "point_count"],
+            18,
+            10, 22,
+            25, 28,
+            50, 34,
+            100, 40,
+          ],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "rgba(255,255,255,0.9)",
+          "circle-opacity": 0.92,
+        },
+      });
+
+      map.addLayer({
+        id: "lake-cluster-count",
+        type: "symbol",
+        source: "lake-points",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": "{point_count_abbreviated}",
+          "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+          "text-size": 13,
+          "text-allow-overlap": true,
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "rgba(0,0,0,0.35)",
+          "text-halo-width": 1,
+        },
+      });
+
+      map.addLayer({
+        id: "lake-labels",
+        type: "symbol",
+        source: "lake-points",
+        filter: ["!", ["has", "point_count"]],
+        layout: {
+          "text-field": [
+            "concat",
+            ["number-format", ["get", "temp"], { "min-fraction-digits": 0, "max-fraction-digits": 0 }],
+            "°",
+          ],
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-size": [
+            "interpolate", ["linear"], ["zoom"],
+            3, 10,
+            6, 12,
+            9, 13,
+          ],
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+          "symbol-sort-key": ["-", 10, ["get", "importance"]],
+          "text-padding": 4,
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": TEMP_COLOR_RAMP as never,
+          "text-halo-width": 8,
+          "text-halo-blur": 0.3,
+        },
+      });
+
+      map.addLayer(
+        {
+          id: "lake-dots",
+          type: "circle",
+          source: "lake-points",
+          filter: ["!", ["has", "point_count"]],
+          paint: {
+            "circle-color": TEMP_COLOR_RAMP as never,
+            "circle-radius": [
+              "interpolate", ["linear"], ["zoom"],
+              2, 2,
+              6, 4,
+              10, 6,
+            ],
+            "circle-stroke-width": 1.5,
+            "circle-stroke-color": "rgba(255,255,255,0.9)",
+          },
+        },
+        "lake-labels",
+      );
+
+      // Interactions.
+      map.on("click", "lake-clusters", async (e) => {
+        const feats = map.queryRenderedFeatures(e.point, { layers: ["lake-clusters"] });
+        const first = feats[0];
+        if (!first?.properties?.cluster_id) return;
+        const clusterId = first.properties.cluster_id as number;
+        const src = map.getSource("lake-points") as maplibregl.GeoJSONSource;
+        const zoom = await src.getClusterExpansionZoom(clusterId);
+        if (first.geometry.type !== "Point") return;
+        const [lng, lat] = first.geometry.coordinates;
+        map.easeTo({ center: [lng, lat], zoom, duration: 700 });
+      });
+
+      const openFeature = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const props = f.properties as { id: string };
+        const target = filteredRef.current.find((l) => l.id === props.id);
+        if (!target || f.geometry.type !== "Point") return;
+        const [lng, lat] = f.geometry.coordinates;
+        setSelected(target);
+        map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 7), duration: 700 });
+      };
+      map.on("click", "lake-labels", openFeature);
+      map.on("click", "lake-dots", openFeature);
+
+      const onEnter = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+        map.getCanvas().style.cursor = "pointer";
+        const f = e.features?.[0];
+        if (!f) return;
+        const props = f.properties as { id: string };
+        const target = filteredRef.current.find((l) => l.id === props.id);
+        if (target) {
+          const p = map.project(e.lngLat);
+          setHovered({ lake: target, x: p.x, y: p.y });
+        }
+      };
+      const onLeave = () => {
+        map.getCanvas().style.cursor = "";
+        setHovered(null);
+      };
+      map.on("mouseenter", "lake-labels", onEnter);
+      map.on("mouseleave", "lake-labels", onLeave);
+      map.on("mouseenter", "lake-dots", onEnter);
+      map.on("mouseleave", "lake-dots", onLeave);
+      map.on("mouseenter", "lake-clusters", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "lake-clusters", () => { map.getCanvas().style.cursor = ""; });
+
+      // Immediately seed the source with whatever `filteredRef.current` is —
+      // otherwise we'd wait for the next `filtered` change to push data,
+      // which never happens on a plain style-swap.
+      const src = map.getSource("lake-points") as maplibregl.GeoJSONSource | undefined;
+      if (src) {
+        const features = filteredRef.current
+          .filter((l) => l.temp_c != null)
+          .map((l) => ({
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: [l.lng, l.lat] },
+            properties: {
+              id: l.id,
+              slug: l.slug,
+              name: l.name,
+              temp: l.temp_c as number,
+              importance: l.importance ?? 0,
+              area: l.area_km2 ?? 0,
+              country: l.country_code,
+            },
+          }));
+        src.setData({ type: "FeatureCollection", features });
+      }
+    };
+
+    // MapLibre fires `style.load` once per style — first mount + every
+    // setStyle() call. If the style is already loaded at mount time
+    // (unlikely but possible under HMR) we call it directly.
+    if (map.isStyleLoaded()) installLayers();
+    map.on("styledata", installLayers);
+    // Also install once initial `load` fires — MapLibre only fires
+    // `style.load` on setStyle(), not on the very first init. Belt and
+    // braces: `map.once("load", installLayers)` catches the first paint.
+    map.once("load", installLayers);
+
+    return () => {
+      map.off("styledata", installLayers);
+    };
+    // Deliberately empty deps: register the install listener ONCE. It
+    // will re-fire on every subsequent `setStyle()` (which triggers a
+    // fresh `style.load`), keeping our sources+layers alive across
+    // basemap swaps without any React-side re-registration race.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --------------------------------------------------------------------
+  // Push data into the lake-points source whenever `filtered` changes.
+  // This effect does NOT touch layers; it only calls `setData` on an
+  // existing source. If the source isn't installed yet (style still
+  // loading) the effect no-ops and will pick up the next filtered
+  // update — or the style.load install effect will already have
+  // seeded it via setData below.
+  // --------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const pushData = () => {
+      const src = map.getSource("lake-points") as maplibregl.GeoJSONSource | undefined;
+      if (!src) return;
       const features = filtered
         .filter((l) => l.temp_c != null)
         .map((l) => ({
@@ -342,232 +625,29 @@ export function MapView() {
             country: l.country_code,
           },
         }));
+      src.setData({ type: "FeatureCollection", features });
+    };
 
-      const fc = { type: "FeatureCollection" as const, features };
+    pushData();
+    // If we mount right after basemap switch, the source may not yet
+    // exist — retry once on the next style.load.
+    map.on("styledata", pushData);
+    return () => { map.off("styledata", pushData); };
+  }, [filtered]);
 
-      const existing = map.getSource("lake-points") as
-        | maplibregl.GeoJSONSource
-        | undefined;
-      if (existing) {
-        existing.setData(fc);
-      } else {
-        // First-time setup: create source + layers.
-        map.addSource("lake-points", {
-          type: "geojson",
-          data: fc,
-          cluster: true,
-          clusterRadius: 55,
-          clusterMaxZoom: 8, // Below zoom 8 aggregate; above show individuals.
-          clusterProperties: {
-            // Two accumulators → runtime avg = tempSum / tempCount.
-            // We avoid a direct "avg" because MapLibre cluster reducers
-            // can't do division across step-by-step accumulation.
-            tempSum: ["+", ["get", "temp"]],
-            tempCount: ["+", 1],
-            maxImportance: ["max", ["get", "importance"]],
-          },
-        });
-
-        // Heatmap — kept as an optional overlay ("Windy-style" view).
-        map.addLayer({
-          id: "lake-heatmap",
-          type: "heatmap",
-          source: "lake-points",
-          maxzoom: 9,
-          paint: {
-            "heatmap-weight": ["interpolate", ["linear"], ["get", "temp"], 0, 0.2, 15, 0.4, 22, 0.8, 30, 1],
-            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.6, 9, 3],
-            "heatmap-color": [
-              "interpolate", ["linear"], ["heatmap-density"],
-              0,   "rgba(30, 58, 138, 0)",
-              0.2, "rgba(59, 130, 246, 0.5)",
-              0.4, "rgba(34, 211, 238, 0.6)",
-              0.6, "rgba(250, 204, 21, 0.7)",
-              0.8, "rgba(239, 68, 68, 0.85)",
-              1,   "rgba(124, 45, 18, 0.9)",
-            ],
-            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 4, 30, 9, 60],
-            "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.9, 9, 0.35],
-          },
-        });
-
-        // Cluster bubble — coloured by avg temperature of its members.
-        map.addLayer({
-          id: "lake-clusters",
-          type: "circle",
-          source: "lake-points",
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": CLUSTER_COLOR_RAMP as never,
-            "circle-radius": [
-              "step",
-              ["get", "point_count"],
-              18,   // 1-9 lakes
-              10, 22,
-              25, 28,
-              50, 34,
-              100, 40,
-            ],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "rgba(255,255,255,0.9)",
-            "circle-opacity": 0.92,
-          },
-        });
-
-        // Cluster count label.
-        map.addLayer({
-          id: "lake-cluster-count",
-          type: "symbol",
-          source: "lake-points",
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": "{point_count_abbreviated}",
-            "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
-            "text-size": 13,
-            "text-allow-overlap": true,
-          },
-          paint: {
-            "text-color": "#ffffff",
-            "text-halo-color": "rgba(0,0,0,0.35)",
-            "text-halo-width": 1,
-          },
-        });
-
-        // Individual lake temperature pill. Collision detection is on by
-        // default (text-allow-overlap: false), so labels thin themselves
-        // out as you zoom out. `minzoom` per-layer keeps small lakes hidden
-        // until they can actually be told apart.
-        map.addLayer({
-          id: "lake-labels",
-          type: "symbol",
-          source: "lake-points",
-          filter: ["!", ["has", "point_count"]],
-          layout: {
-            "text-field": [
-              "concat",
-              ["number-format", ["get", "temp"], { "min-fraction-digits": 0, "max-fraction-digits": 0 }],
-              "°",
-            ],
-            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-            "text-size": [
-              "interpolate", ["linear"], ["zoom"],
-              3, 10,
-              6, 12,
-              9, 13,
-            ],
-            "text-allow-overlap": false,
-            "text-ignore-placement": false,
-            // Sort so the highest-importance labels place first — they
-            // "win" any collision with a less-important neighbour.
-            "symbol-sort-key": ["-", 10, ["get", "importance"]],
-            "text-padding": 4,
-          },
-          paint: {
-            "text-color": "#ffffff",
-            "text-halo-color": TEMP_COLOR_RAMP as never,
-            "text-halo-width": 8, // Halo acts as the pill background.
-            "text-halo-blur": 0.3,
-          },
-        });
-
-        // Small always-visible marker under the label so users can still
-        // see something is there even when the label gets collision-hidden.
-        map.addLayer(
-          {
-            id: "lake-dots",
-            type: "circle",
-            source: "lake-points",
-            filter: ["!", ["has", "point_count"]],
-            paint: {
-              "circle-color": TEMP_COLOR_RAMP as never,
-              "circle-radius": [
-                "interpolate", ["linear"], ["zoom"],
-                2, 2,
-                6, 4,
-                10, 6,
-              ],
-              "circle-stroke-width": 1.5,
-              "circle-stroke-color": "rgba(255,255,255,0.9)",
-            },
-          },
-          "lake-labels", // Draw dots *below* labels.
-        );
-
-        // Interactions: click on cluster → expand.
-        map.on("click", "lake-clusters", async (e) => {
-          const feats = map.queryRenderedFeatures(e.point, { layers: ["lake-clusters"] });
-          const first = feats[0];
-          if (!first?.properties?.cluster_id) return;
-          const clusterId = first.properties.cluster_id as number;
-          const src = map.getSource("lake-points") as maplibregl.GeoJSONSource;
-          const zoom = await src.getClusterExpansionZoom(clusterId);
-          if (first.geometry.type !== "Point") return;
-          const [lng, lat] = first.geometry.coordinates;
-          map.easeTo({ center: [lng, lat], zoom, duration: 700 });
-        });
-
-        // Click on individual dot / label → open detail sheet.
-        // Reads `filteredRef.current` (not the closed-over `filtered`) so
-        // it survives across data refreshes without re-binding.
-        const openFeature = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-          const f = e.features?.[0];
-          if (!f) return;
-          const props = f.properties as { id: string; slug: string };
-          const target = filteredRef.current.find((l) => l.id === props.id);
-          if (!target || f.geometry.type !== "Point") return;
-          const [lng, lat] = f.geometry.coordinates;
-          setSelected(target);
-          map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 7), duration: 700 });
-        };
-        map.on("click", "lake-labels", openFeature);
-        map.on("click", "lake-dots", openFeature);
-
-        // Hover tooltip (desktop only — mobile taps go straight to select).
-        const onEnter = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-          map.getCanvas().style.cursor = "pointer";
-          const f = e.features?.[0];
-          if (!f) return;
-          const props = f.properties as { id: string };
-          const target = filteredRef.current.find((l) => l.id === props.id);
-          if (target) {
-            const p = map.project(e.lngLat);
-            setHovered({ lake: target, x: p.x, y: p.y });
-          }
-        };
-        const onLeave = () => {
-          map.getCanvas().style.cursor = "";
-          setHovered(null);
-        };
-        map.on("mouseenter", "lake-labels", onEnter);
-        map.on("mouseleave", "lake-labels", onLeave);
-        map.on("mouseenter", "lake-dots", onEnter);
-        map.on("mouseleave", "lake-dots", onLeave);
-        map.on("mouseenter", "lake-clusters", () => {
-          map.getCanvas().style.cursor = "pointer";
-        });
-        map.on("mouseleave", "lake-clusters", () => {
-          map.getCanvas().style.cursor = "";
-        });
-      }
-
+  // Toggle heatmap visibility separately from data + install.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
       if (map.getLayer("lake-heatmap")) {
         map.setLayoutProperty("lake-heatmap", "visibility", showHeatmap ? "visible" : "none");
       }
     };
-
-    if (map.isStyleLoaded()) doUpdate();
-    else map.once("load", doUpdate);
-
-    const onStyleData = () => {
-      if (map.isStyleLoaded()) doUpdate();
-    };
-    map.on("styledata", onStyleData);
-
-    return () => {
-      cancelled = true;
-      map.off("styledata", onStyleData);
-    };
-  }, [filtered, showHeatmap, basemap]);
+    apply();
+    map.on("styledata", apply);
+    return () => { map.off("styledata", apply); };
+  }, [showHeatmap]);
 
   const doLocate = useCallback(() => {
     if (!navigator.geolocation) return;
