@@ -6,6 +6,11 @@
   "nav.signIn": "Sign in",
   "nav.settings": "Settings",
 
+  "sync.title": "Data freshness",
+  "sync.lastUpdated": "Last synced {ago}",
+  "sync.lastUpdatedLong": "Data was last synced {ago}",
+  "sync.sources": "Sources",
+
   "hero.live": "Live · updated hourly · Free forever",
   "hero.title1": "Every lake.",
   "hero.title2": "One map. Live.",

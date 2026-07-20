@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Droplet, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+import { SyncBadge } from "@/components/ui";
 import { SettingsMenu } from "./settings-menu";
 
 export function Nav() {
@@ -33,6 +34,10 @@ export function Nav() {
             </div>
             <span className="font-semibold text-deep tracking-tight text-base">Weelake</span>
           </Link>
+
+          {/* Data-freshness badge — visible on desktop; hidden on tight
+              mobile viewports because the nav pill has no room. */}
+          <SyncBadge className="hidden sm:inline-flex ml-1" compact />
 
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             {!isMap && (

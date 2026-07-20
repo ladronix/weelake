@@ -6,6 +6,11 @@
   "nav.signIn": "Anmelden",
   "nav.settings": "Einstellungen",
 
+  "sync.title": "Datenaktualität",
+  "sync.lastUpdated": "Zuletzt synchronisiert {ago}",
+  "sync.lastUpdatedLong": "Daten wurden zuletzt synchronisiert {ago}",
+  "sync.sources": "Quellen",
+
   "hero.live": "Live · stündliches Update · Für immer kostenlos",
   "hero.title1": "Jeder See.",
   "hero.title2": "Eine Karte. Live.",
