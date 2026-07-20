@@ -81,6 +81,7 @@
   "map.layers": "Ebenen",
   "map.basemap": "Kartenstil",
   "map.heatmap": "Heatmap",
+  "map.rainRadar": "Regenradar",
   "map.locate": "Mein Standort",
   "map.searchLakes": "Seen suchen…",
   "map.hideList": "Liste ausblenden",

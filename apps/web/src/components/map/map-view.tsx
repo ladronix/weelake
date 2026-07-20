@@ -8,7 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Layers, Locate, Minus, Plus, X, Search,
   Thermometer, Waves, Filter, ChevronRight, ChevronLeft, ChevronUp,
-  Sparkles, Navigation2, Map as MapIcon, Moon, Sun,
+  Sparkles, Navigation2, Map as MapIcon, Moon, Sun, CloudRain,
 } from "lucide-react";
 import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
@@ -90,6 +90,11 @@ export function MapView() {
   const [mobilePanel, setMobilePanel] = useState<"peek" | "half" | "full" | "hidden">("peek");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(true);
+  const [showRadar, setShowRadar] = useState(false);
+  // Rain-radar tile URL. RainViewer publishes a manifest with the last
+  // ~2 hours of radar frames; we pick the newest and turn it into an
+  // XYZ tile URL. The manifest is refreshed hourly.
+  const [radarTileUrl, setRadarTileUrl] = useState<string | null>(null);
   const [basemap, setBasemap] = useState<BasemapKey>("light");
   const [showLayerMenu, setShowLayerMenu] = useState(false);
   const [tempRange, setTempRange] = useState<[number, number]>([-5, 35]);
@@ -620,6 +625,71 @@ export function MapView() {
     return () => { map.off("styledata", apply); };
   }, [showHeatmap]);
 
+  // Fetch the latest RainViewer manifest once the user asks to see rain.
+  // Cached on the module scope in-memory for the lifetime of the tab
+  // (the manifest updates every 10 minutes upstream; refetching on
+  // every toggle would be wasteful).
+  useEffect(() => {
+    if (!showRadar || radarTileUrl) return;
+    let cancelled = false;
+    fetch("https://api.rainviewer.com/public/weather-maps.json")
+      .then((r) => r.json())
+      .then((data: {
+        host: string;
+        radar?: { past?: Array<{ path: string; time: number }> };
+      }) => {
+        if (cancelled) return;
+        const frames = data.radar?.past ?? [];
+        const latest = frames[frames.length - 1];
+        if (!latest) return;
+        // 512-px tiles, colour scheme 2 (rainbow), smoothing on, snow off.
+        setRadarTileUrl(`${data.host}${latest.path}/512/{z}/{x}/{y}/2/1_0.png`);
+      })
+      .catch(() => { /* radar remains unavailable — silent */ });
+    return () => { cancelled = true; };
+  }, [showRadar, radarTileUrl]);
+
+  // Install / remove the rain-radar raster layer as showRadar toggles.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const install = () => {
+      if (!showRadar || !radarTileUrl) return;
+      if (map.getSource("rain-radar")) return;
+      map.addSource("rain-radar", {
+        type: "raster",
+        tiles: [radarTileUrl],
+        tileSize: 512,
+        attribution: '<a href="https://www.rainviewer.com/" target="_blank" rel="noreferrer">RainViewer</a>',
+      });
+      // Insert below lake-heatmap so lake pills stay on top of the rain.
+      const beforeId = map.getLayer("lake-heatmap") ? "lake-heatmap" : undefined;
+      map.addLayer(
+        {
+          id: "rain-radar",
+          type: "raster",
+          source: "rain-radar",
+          paint: { "raster-opacity": 0.7 },
+        },
+        beforeId,
+      );
+    };
+
+    const remove = () => {
+      if (map.getLayer("rain-radar")) map.removeLayer("rain-radar");
+      if (map.getSource("rain-radar")) map.removeSource("rain-radar");
+    };
+
+    if (showRadar && radarTileUrl) {
+      if (map.isStyleLoaded()) install();
+      map.on("styledata", install);
+      return () => { map.off("styledata", install); };
+    } else {
+      remove();
+    }
+  }, [showRadar, radarTileUrl]);
+
   const doLocate = useCallback(() => {
     if (!navigator.geolocation) return;
     track("map.locate");
@@ -951,6 +1021,27 @@ export function MapView() {
                     <span className={cn(
                       "inline-block h-4 w-4 rounded-full bg-white shadow transform transition",
                       showHeatmap ? "translate-x-4" : "translate-x-0.5",
+                    )} />
+                  </span>
+                </label>
+
+                {/* Rain radar — RainViewer NEXRAD tiles, past 2h. */}
+                <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
+                  <span className="flex items-center gap-2 text-sm text-slate-700">
+                    <CloudRain className="h-4 w-4 text-water-600" aria-hidden="true" /> {t("map.rainRadar")}
+                  </span>
+                  <span
+                    role="switch"
+                    aria-checked={showRadar}
+                    onClick={() => setShowRadar((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 items-center rounded-full transition cursor-pointer",
+                      showRadar ? "bg-water-500" : "bg-slate-300",
+                    )}
+                  >
+                    <span className={cn(
+                      "inline-block h-4 w-4 rounded-full bg-white shadow transform transition",
+                      showRadar ? "translate-x-4" : "translate-x-0.5",
                     )} />
                   </span>
                 </label>

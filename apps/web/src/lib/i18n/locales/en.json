@@ -81,6 +81,7 @@
   "map.layers": "Layers",
   "map.basemap": "Basemap",
   "map.heatmap": "Heatmap",
+  "map.rainRadar": "Rain radar",
   "map.locate": "Find my location",
   "map.searchLakes": "Search lakes…",
   "map.hideList": "Hide list",
