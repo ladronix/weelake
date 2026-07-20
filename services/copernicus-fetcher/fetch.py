@@ -91,30 +91,67 @@ def download_lswt(
     """
     Download the most recent `days` of the Copernicus satellite LSWT dataset.
     Returns the path to the extracted NetCDF file, or None on failure.
+
+    LSWT lag: the CDS dataset is documented as "approximately 6 months
+    behind real-time" with semiannual updates, so a naive `today - N`
+    query almost always returns 400. We probe a series of increasingly
+    older windows (start ~6 months back, step back one month at a time
+    up to 18 months) and return the first one CDS accepts. Each attempt
+    is a single-request retrieve of `days` consecutive dates so the
+    downloaded NetCDF file is small.
     """
     client = build_cds_client()
 
-    today = dt.date.today()
-    fetch_days = [today - dt.timedelta(days=d + 1) for d in range(days)]
-
-    years   = sorted({f"{d.year}" for d in fetch_days})
-    months  = sorted({f"{d.month:02d}" for d in fetch_days})
-    day_ids = sorted({f"{d.day:02d}" for d in fetch_days})
+    # Probe offsets, in days, from today. 180 days = ~6 months (documented
+    # latency). Each subsequent offset is +30 days further into the past.
+    # We stop as soon as CDS returns a valid NetCDF, or after 12 tries.
+    OFFSETS = [180, 210, 240, 270, 300, 330, 360, 420, 480, 540, 600, 660]
 
     target = workdir / "lswt.zip"
-    request = {
-        "variable": ["lake_surface_water_temperature"],
-        "year":     years,
-        "month":    months,
-        "day":      day_ids,
-        "version":  "4_5_2",
-        "format":   "zip",
-    }
-    log.info("Requesting CDS LSWT for %s", ", ".join(f"{y}-{m}-{d}" for y in years for m in months for d in day_ids))
-    try:
-        client.retrieve("satellite-lake-water-temperature", request, str(target))
-    except Exception as e:
-        log.error("CDS retrieve failed: %s", e)
+    today = dt.date.today()
+    last_error: Exception | None = None
+
+    for offset in OFFSETS:
+        end = today - dt.timedelta(days=offset)
+        fetch_days = [end - dt.timedelta(days=d) for d in range(days)]
+
+        years   = sorted({f"{d.year}" for d in fetch_days})
+        months  = sorted({f"{d.month:02d}" for d in fetch_days})
+        day_ids = sorted({f"{d.day:02d}" for d in fetch_days})
+
+        request = {
+            "variable": ["lake_surface_water_temperature"],
+            "year":     years,
+            "month":    months,
+            "day":      day_ids,
+            "version":  "4_5_2",
+            "format":   "zip",
+        }
+        log.info(
+            "Requesting CDS LSWT (offset=%dd, target=%s±%dd)",
+            offset,
+            end.isoformat(),
+            days,
+        )
+        try:
+            client.retrieve("satellite-lake-water-temperature", request, str(target))
+            break
+        except Exception as e:
+            msg = str(e)
+            # 400 = window out of range or invalid combination.
+            # Try the next older window; any other error is fatal.
+            if "400" in msg or "invalid request" in msg.lower():
+                last_error = e
+                continue
+            log.error("CDS retrieve failed hard: %s", e)
+            return None
+    else:
+        # Exhausted every offset without success.
+        log.error(
+            "CDS retrieve failed on every window (tried offsets %s). Last error: %s",
+            OFFSETS,
+            last_error,
+        )
         return None
 
     # Extract NetCDF from the zip.
