@@ -8,7 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Layers, Locate, Minus, Plus, X, Search,
   Thermometer, Waves, Filter, ChevronRight, ChevronLeft, ChevronUp,
-  Sparkles, Navigation2, Map as MapIcon, Mountain, Satellite as SatIcon, Moon, Sun,
+  Sparkles, Navigation2, Map as MapIcon, Moon, Sun,
 } from "lucide-react";
 import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
@@ -67,48 +67,14 @@ interface LakeMarker {
   photo_url?: string | null;
 }
 
-type BasemapKey = "positron" | "voyager" | "terrain" | "dark" | "satellite";
+type BasemapKey = "light" | "dark";
 
-// Style URLs — all free, no API key required.
+// Style URLs — all free, no API key required. Both use OpenStreetMap
+// data via CARTO's Positron / Dark Matter styles: minimal-clutter road
+// networks and clean water-first colour palettes.
 const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style: unknown }> = {
-  positron:  { label: "Light",     icon: Sun,       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
-  voyager:   { label: "Streets",   icon: MapIcon,   style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" },
-  terrain:   { label: "Terrain",   icon: Mountain,  style: {
-    version: 8,
-    sources: {
-      osm: {
-        type: "raster",
-        tiles: [
-          "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
-          "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
-          "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
-        ],
-        tileSize: 256,
-        maxzoom: 17,
-        attribution:
-          "Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)",
-      },
-    },
-    layers: [{ id: "osm-terrain", type: "raster", source: "osm" }],
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-  } },
-  dark:      { label: "Dark",      icon: Moon,      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
-  satellite: { label: "Satellite", icon: SatIcon,   style: {
-    version: 8,
-    sources: {
-      esri: {
-        type: "raster",
-        tiles: [
-          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        ],
-        tileSize: 256,
-        attribution:
-          "Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
-      },
-    },
-    layers: [{ id: "esri", type: "raster", source: "esri" }],
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-  } },
+  light: { label: "Light", icon: Sun,  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
+  dark:  { label: "Dark",  icon: Moon, style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
 };
 
 type SortKey = "importance" | "warmest" | "coldest" | "name" | "distance" | "area";
@@ -123,7 +89,7 @@ export function MapView() {
   const [mobilePanel, setMobilePanel] = useState<"peek" | "half" | "full" | "hidden">("peek");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(true);
-  const [basemap, setBasemap] = useState<BasemapKey>("positron");
+  const [basemap, setBasemap] = useState<BasemapKey>("light");
   const [showLayerMenu, setShowLayerMenu] = useState(false);
   const [tempRange, setTempRange] = useState<[number, number]>([-5, 35]);
   const [countryFilter, setCountryFilter] = useState<string>("all");
@@ -465,9 +431,9 @@ export function MapView() {
           "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
           "text-size": [
             "interpolate", ["linear"], ["zoom"],
-            3, 10,
-            6, 12,
-            9, 13,
+            3, 11,
+            6, 13,
+            9, 14,
           ],
           "text-allow-overlap": false,
           "text-ignore-placement": false,
@@ -477,8 +443,12 @@ export function MapView() {
         paint: {
           "text-color": "#ffffff",
           "text-halo-color": TEMP_COLOR_RAMP as never,
-          "text-halo-width": 8,
-          "text-halo-blur": 0.3,
+          // Fatter halo makes the pill background bigger and gives more
+          // contrast against dark basemaps, where the white number would
+          // otherwise blend into the light-yellow / light-cyan temperature
+          // tint. The blur softens the outer edge into a pill shape.
+          "text-halo-width": 10,
+          "text-halo-blur": 1.2,
         },
       });
 
@@ -854,33 +824,9 @@ export function MapView() {
             />
             {showLayerMenu && (
               <GlassCard variant="light" className="absolute right-0 top-12 w-64 p-3 z-50">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">Map style</div>
-                {/* Group 1: schematic road maps */}
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(["positron", "voyager", "dark"] as BasemapKey[]).map((k) => {
-                    const B = BASEMAPS[k];
-                    const Icon = B.icon;
-                    return (
-                      <button
-                        key={k}
-                        onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
-                        className={cn(
-                          "rounded-2xl px-2 py-2 text-[11px] font-medium transition flex flex-col items-center gap-1",
-                          basemap === k
-                            ? "bg-water-500 text-white shadow"
-                            : "bg-water-50 text-slate-700 hover:bg-water-100",
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {B.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1.5 text-[9px] text-slate-400 px-1">{t("map.roads")}</div>
-                {/* Group 2: photo / relief */}
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  {(["terrain", "satellite"] as BasemapKey[]).map((k) => {
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.basemap")}</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(["light", "dark"] as BasemapKey[]).map((k) => {
                     const B = BASEMAPS[k];
                     const Icon = B.icon;
                     return (
@@ -900,7 +846,6 @@ export function MapView() {
                     );
                   })}
                 </div>
-                <div className="mt-1.5 text-[9px] text-slate-400 px-1">{t("map.nature")}</div>
                 <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.layers")}</div>
                 <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
                   <span className="flex items-center gap-2 text-sm text-slate-700">
