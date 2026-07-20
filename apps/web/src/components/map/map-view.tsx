@@ -81,6 +81,7 @@ type SortKey = "importance" | "warmest" | "coldest" | "name" | "distance" | "are
 
 export function MapView() {
   const t = useT();
+  const p = useP();
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const [lakes, setLakes] = useState<LakeMarker[]>([]);
@@ -796,20 +797,30 @@ export function MapView() {
           </button>
         </div>
 
-        {/* Search-this-area toggle */}
-        <button
-          onClick={() => setVisibleOnly((v) => !v)}
-          className={cn(
-            "absolute top-[76px] left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-1.5 rounded-full shadow-lg px-4 py-2 text-xs font-semibold transition border",
-            visibleOnly
-              ? "bg-water-500 text-white border-water-600"
-              : "bg-white/95 backdrop-blur text-water-800 border-white/60 hover:bg-white",
-          )}
-          title={visibleOnly ? t("map.showAll") : t("map.onlyInView")}
-        >
-          <MapIcon className="h-3.5 w-3.5" />
-          {visibleOnly ? t("map.showingArea") : t("map.searchArea")}
-        </button>
+        {/* Top-center status bubble — shows how many lakes match the
+            active filters and lets the user toggle whether the count
+            reflects the whole world or just what's inside the current
+            map bounds. Replaces the old separate '{n} lakes' pill that
+            lived inside the sidebar and the standalone 'Search this
+            area' pill floating above. */}
+        <div className="hidden md:flex absolute top-[76px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
+          <span className="text-sm font-semibold text-deep tabular-nums">
+            {p("map.lakesShown", filtered.length)}
+          </span>
+          <button
+            onClick={() => setVisibleOnly((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition border",
+              visibleOnly
+                ? "bg-water-500 text-white border-water-600"
+                : "bg-water-50 text-water-800 border-transparent hover:bg-water-100",
+            )}
+            title={visibleOnly ? t("map.showAll") : t("map.onlyInView")}
+          >
+            <MapIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            {visibleOnly ? t("map.showingArea") : t("map.searchArea")}
+          </button>
+        </div>
 
         {/* Hover tooltip */}
         {hovered && !selected && (
@@ -835,63 +846,10 @@ export function MapView() {
           </div>
         )}
 
-        {/* Right controls stack — pushed below the floating nav on desktop, and below the mobile top bar as well. */}
+        {/* Right controls stack — zoom / locate / reset only. Layers
+            (heatmap + future rain radar) moved to the bottom-left so
+            they sit next to the temperature legend they're about. */}
         <div className="absolute top-[76px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
-          <div className="relative">
-            <IconButton
-              icon={<Layers className="h-5 w-5" />}
-              onClick={() => setShowLayerMenu((v) => !v)}
-              aria-label={t("map.mapLayers")}
-              active={showLayerMenu}
-            />
-            {showLayerMenu && (
-              <GlassCard variant="light" className="absolute right-0 top-12 w-64 p-3 z-50">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.basemap")}</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(["light", "dark"] as BasemapKey[]).map((k) => {
-                    const B = BASEMAPS[k];
-                    const Icon = B.icon;
-                    return (
-                      <button
-                        key={k}
-                        onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
-                        className={cn(
-                          "rounded-2xl px-3 py-2 text-xs font-medium transition flex items-center gap-2",
-                          basemap === k
-                            ? "bg-water-500 text-white shadow"
-                            : "bg-water-50 text-slate-700 hover:bg-water-100",
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {B.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.layers")}</div>
-                <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
-                  <span className="flex items-center gap-2 text-sm text-slate-700">
-                    <Thermometer className="h-4 w-4 text-temp-hot" /> Heatmap
-                  </span>
-                  <span
-                    role="switch"
-                    aria-checked={showHeatmap}
-                    onClick={() => setShowHeatmap((v) => !v)}
-                    className={cn(
-                      "relative inline-flex h-5 w-9 items-center rounded-full transition cursor-pointer",
-                      showHeatmap ? "bg-water-500" : "bg-slate-300",
-                    )}
-                  >
-                    <span className={cn(
-                      "inline-block h-4 w-4 rounded-full bg-white shadow transform transition",
-                      showHeatmap ? "translate-x-4" : "translate-x-0.5",
-                    )} />
-                  </span>
-                </label>
-              </GlassCard>
-            )}
-          </div>
-
           <div className="flex flex-col rounded-full bg-white/95 backdrop-blur shadow-lg overflow-hidden border border-white/60">
             <button
               onClick={() => zoom(1)}
@@ -923,18 +881,92 @@ export function MapView() {
           />
         </div>
 
-        {/* Temperature legend — bottom-left, hidden when the sheet is up */}
-        <div className={cn(
-          "absolute bottom-4 left-4 z-10 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 items-center gap-2 text-[11px] font-medium text-slate-700 border border-white/60",
-          "hidden md:flex",
-        )}>
-          <Waves className="h-3.5 w-3.5 text-water-600" />
-          <span className="tabular-nums">-5°</span>
-          <span
-            className="h-2 w-40 rounded-full"
-            style={{ background: "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)" }}
-          />
-          <span className="tabular-nums">35°</span>
+        {/* Temperature legend + Layers control — bottom-left cluster.
+            Sits to the right of the side panel when it's open so nothing
+            overlaps; slides back to the left edge when the panel is
+            collapsed. Layers popover expands UPWARDS on hover so it
+            stays visible over the map without covering the legend
+            itself. */}
+        <div
+          className={cn(
+            "hidden md:flex absolute bottom-4 z-10 items-center gap-2 transition-[left] duration-200",
+            showList ? "left-[calc(340px+1.5rem)] lg:left-[calc(380px+1.5rem)]" : "left-4",
+          )}
+        >
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowLayerMenu((v) => !v)}
+              className={cn(
+                "h-11 w-11 rounded-full flex items-center justify-center transition border shadow-lg",
+                showLayerMenu
+                  ? "bg-water-500 text-white border-water-600"
+                  : "bg-white/95 backdrop-blur text-water-700 border-white/60 hover:bg-white",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-water-500 focus-visible:ring-offset-2",
+              )}
+              aria-label={t("map.mapLayers")}
+              aria-expanded={showLayerMenu}
+              title={t("map.mapLayers")}
+            >
+              <Layers className="h-5 w-5" aria-hidden="true" />
+            </button>
+            {showLayerMenu && (
+              <GlassCard variant="light" className="absolute left-0 bottom-14 w-64 p-3 z-50">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.basemap")}</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(["light", "dark"] as BasemapKey[]).map((k) => {
+                    const B = BASEMAPS[k];
+                    const Icon = B.icon;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
+                        className={cn(
+                          "rounded-2xl px-3 py-2 text-xs font-medium transition flex items-center gap-2",
+                          basemap === k
+                            ? "bg-water-500 text-white shadow"
+                            : "bg-water-50 text-slate-700 hover:bg-water-100",
+                        )}
+                      >
+                        <Icon className="h-4 w-4" aria-hidden="true" />
+                        {B.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.layers")}</div>
+                <label className="flex items-center justify-between gap-2 px-2 py-2 rounded-2xl hover:bg-water-50 cursor-pointer">
+                  <span className="flex items-center gap-2 text-sm text-slate-700">
+                    <Thermometer className="h-4 w-4 text-temp-hot" aria-hidden="true" /> {t("map.heatmap")}
+                  </span>
+                  <span
+                    role="switch"
+                    aria-checked={showHeatmap}
+                    onClick={() => setShowHeatmap((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 items-center rounded-full transition cursor-pointer",
+                      showHeatmap ? "bg-water-500" : "bg-slate-300",
+                    )}
+                  >
+                    <span className={cn(
+                      "inline-block h-4 w-4 rounded-full bg-white shadow transform transition",
+                      showHeatmap ? "translate-x-4" : "translate-x-0.5",
+                    )} />
+                  </span>
+                </label>
+              </GlassCard>
+            )}
+          </div>
+
+          <div className="rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 flex items-center gap-2 text-[11px] font-medium text-slate-700 border border-white/60">
+            <Waves className="h-3.5 w-3.5 text-water-600" aria-hidden="true" />
+            <span className="tabular-nums">-5°</span>
+            <span
+              className="h-2 w-40 rounded-full"
+              style={{ background: "linear-gradient(90deg, #1E3A8A, #3B82F6, #22D3EE, #10B981, #FACC15, #F59E0B, #EF4444, #7C2D12)" }}
+            />
+            <span className="tabular-nums">35°</span>
+          </div>
         </div>
 
         {/* Selected sheet — floats top-right on desktop, above bottom sheet on mobile */}
