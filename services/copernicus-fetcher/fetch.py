@@ -242,6 +242,19 @@ def fetch_openmeteo_marine_fallback(lat: float, lng: float) -> dict[str, Any] | 
 # ---------------------------------------------------------------------------
 
 def refresh_all(days: int) -> None:
+    """
+    Fetch Copernicus LSWT for every lake and write the result into
+    Supabase. Data-strategy rule (2026-07):
+
+    - Copernicus LSWT data lags real-time by ~6 months, so Open-Meteo
+      Forecast is always the fresher source for `lakes_current`.
+    - We therefore write Copernicus samples into `lakes_history` only,
+      leaving `lakes_current` untouched unless the row is entirely
+      absent (a lake we haven't seen a reading for at all).
+    - This preserves the live-temperature UX (users always see today's
+      Open-Meteo estimate) while enriching the historical chart with
+      the higher-quality satellite anchor points.
+    """
     supabase = get_supabase()
     lakes = (
         supabase.table("lakes")
@@ -253,49 +266,61 @@ def refresh_all(days: int) -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         nc_path = download_lswt(days=days, workdir=Path(tmp))
-        # If Copernicus fails, skip to fallback silently.
         if nc_path is None:
             log.warning("Copernicus download unavailable; skipping (Node worker will keep data flowing)")
             return
 
-        ok = fail = 0
+        # Preload which lakes already have a `lakes_current` row so we
+        # can decide per-lake whether to upsert or history-only.
+        existing_current = {
+            row["lake_id"]
+            for row in (supabase.table("lakes_current").select("lake_id").execute().data or [])
+        }
+
+        ok_history = ok_seed_current = fail = 0
         for lake in lakes:
             temp_c, ts = sample_at(nc_path, lake["lat"], lake["lng"])
-            source = "copernicus_cds"
-            quality = "high"
-
-            if temp_c is None:
-                fb = fetch_openmeteo_marine_fallback(lake["lat"], lake["lng"])
-                if fb:
-                    temp_c = fb["temp_c"]
-                    ts = fb["measured_at"]
-                    source = fb["source"]
-                    quality = fb["quality"]
-
             if temp_c is None:
                 fail += 1
                 log.info("· %-24s no data", lake["slug"])
                 continue
 
-            now = dt.datetime.now(dt.timezone.utc).isoformat()
-            payload = {
+            payload_history = {
                 "lake_id":     lake["id"],
                 "temp_c":      temp_c,
                 "measured_at": ts,
-                "source":      source,
-                "quality":     quality,
-                "updated_at":  now,
+                "source":      "copernicus_cds",
+                "quality":     "high",
             }
             try:
-                supabase.table("lakes_current").upsert(payload).execute()
-                supabase.table("lakes_history").insert({k: v for k, v in payload.items() if k != "updated_at"}).execute()
-                ok += 1
-                log.info("· %-24s %.1f°C (%s)", lake["slug"], temp_c, source)
+                # Always append to history so the detail-page chart can
+                # show Copernicus alongside Open-Meteo. `measured_at`
+                # from Copernicus is in the past (~6 months) so it
+                # naturally sorts as an older data point, not the
+                # latest.
+                supabase.table("lakes_history").insert(payload_history).execute()
+                ok_history += 1
+
+                # Only seed `lakes_current` if the lake has no row yet
+                # (i.e. Open-Meteo hasn't reached it for whatever reason).
+                # This is a very rare fallback path.
+                if lake["id"] not in existing_current:
+                    now = dt.datetime.now(dt.timezone.utc).isoformat()
+                    supabase.table("lakes_current").upsert({
+                        **payload_history,
+                        "updated_at": now,
+                    }).execute()
+                    ok_seed_current += 1
+
+                log.info("· %-24s %.1f°C @ %s (history)", lake["slug"], temp_c, ts)
             except Exception as e:
                 fail += 1
                 log.error("· %-24s DB error: %s", lake["slug"], e)
 
-        log.info("Done. ok=%d fail=%d total=%d", ok, fail, len(lakes))
+        log.info(
+            "Done. history=%d seed_current=%d fail=%d total=%d",
+            ok_history, ok_seed_current, fail, len(lakes),
+        )
 
 
 if __name__ == "__main__":

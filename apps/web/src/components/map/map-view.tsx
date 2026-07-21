@@ -1912,6 +1912,20 @@ function MobileFilterModal(props: {
 }
 
 // ---------- SELECTED SHEET (bottom card / side card) ----------
+/**
+ * Format a raw upstream `source` key (as stored in `lakes_current.source`)
+ * into a short human-readable chip label. Falls back to the raw key so
+ * new sources (e.g. `copernicus_marine_ostia` later on) still render.
+ */
+function formatSourceLabel(source: string): string {
+  switch (source) {
+    case "openmeteo_forecast": return "Open-Meteo";
+    case "openmeteo_marine":   return "Open-Meteo Marine";
+    case "copernicus_cds":     return "Copernicus";
+    default: return source.replace(/_/g, " ");
+  }
+}
+
 function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => void }) {
   const t = useT();
   const bucket = bucketForTemp(lake.temp_c);
@@ -1948,9 +1962,14 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
         )}
         <div className="mt-4 flex items-end gap-4">
           <div className="text-5xl font-semibold tabular-nums leading-none">{formatTemp(lake.temp_c, 1)}</div>
-          <div className="text-xs opacity-90 pb-1">
+          <div className="text-xs opacity-90 pb-1 space-y-0.5">
             <div className="font-semibold">{t(swim.headlineKey)}</div>
             <div>{lake.measured_at ? <><span>{t("map.updatedPrefix")}</span> <RelativeTime iso={lake.measured_at} /></> : t("map.noRecent")}</div>
+            {lake.source && (
+              <div className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-medium mt-1">
+                <span className="opacity-75">via</span> {formatSourceLabel(lake.source)}
+              </div>
+            )}
           </div>
         </div>
       </div>
