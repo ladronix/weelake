@@ -9,7 +9,7 @@ import {
   Layers, Locate, Minus, Plus, X, Search,
   Thermometer, Waves, Filter, ChevronRight, ChevronLeft, ChevronUp,
   Sparkles, Navigation2, Map as MapIcon, Moon, Sun, CloudRain,
-  Satellite as SatIcon,
+  Satellite as SatIcon, Mountain,
 } from "lucide-react";
 import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ interface LakeMarker {
   photo_url?: string | null;
 }
 
-type BasemapKey = "light" | "dark" | "streets" | "satellite";
+type BasemapKey = "light" | "dark" | "streets" | "satellite" | "terrain";
 
 // Style URLs — all free, no API key required. Kept intentionally small:
 //   - light / dark : CARTO Positron / Dark Matter (OSM data, minimal road
@@ -78,6 +78,12 @@ type BasemapKey = "light" | "dark" | "streets" | "satellite";
 //   - streets      : CARTO Voyager (OSM data, roads + POIs visible; good
 //                    when the user is scouting a drive to a lake).
 //   - satellite    : Esri World Imagery (aerial photography, no labels).
+//   - terrain      : OpenTopoMap (SRTM-based hillshading with contour
+//                    lines and hiking/cycling POIs — the "tourist map"
+//                    look. Rendered raster tiles by opentopomap.org.
+//                    Slow-ish (community project, single origin), so
+//                    we point at their round-robin subdomains and cap
+//                    at zoom 17.
 const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style: unknown }> = {
   light: { label: "Light", icon: Sun,  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
   dark:  { label: "Dark",  icon: Moon, style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
@@ -104,6 +110,30 @@ const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style:
       },
       layers: [{ id: "esri", type: "raster", source: "esri" }],
       glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    },
+  },
+  terrain: {
+    label: "Terrain",
+    icon: Mountain,
+    style: {
+      version: 8,
+      sources: {
+        opentopomap: {
+          type: "raster",
+          tiles: [
+            "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+            "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+            "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
+          ],
+          tileSize: 256,
+          // OpenTopoMap capped their zoom at 17.
+          maxzoom: 17,
+          attribution:
+            'Map data: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: © <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+        },
+      },
+      layers: [{ id: "opentopomap", type: "raster", source: "opentopomap" }],
+      glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
     },
   },
 };
@@ -1071,15 +1101,19 @@ export function MapView() {
               >
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.basemap")}</div>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {(["light", "dark", "streets", "satellite"] as BasemapKey[]).map((k) => {
+                  {(["light", "dark", "streets", "satellite", "terrain"] as BasemapKey[]).map((k, i) => {
                     const B = BASEMAPS[k];
                     const Icon = B.icon;
+                    // 5th item (index 4) spans both columns so the
+                    // grid stays visually balanced (2+2+full-width).
+                    const spanFull = i === 4;
                     return (
                       <button
                         key={k}
                         onClick={() => { setBasemap(k); track("map.basemap", { basemap: k }); }}
                         className={cn(
                           "rounded-2xl px-3 py-2 text-xs font-medium transition flex items-center gap-2",
+                          spanFull && "col-span-2 justify-center",
                           basemap === k
                             ? "bg-water-500 text-white shadow"
                             : "bg-water-50 text-slate-700 hover:bg-water-100",
