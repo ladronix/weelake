@@ -297,8 +297,13 @@ def refresh_all(days: int) -> None:
                 # show Copernicus alongside Open-Meteo. `measured_at`
                 # from Copernicus is in the past (~6 months) so it
                 # naturally sorts as an older data point, not the
-                # latest.
-                supabase.table("lakes_history").insert(payload_history).execute()
+                # latest. Upsert with on_conflict is idempotent for
+                # repeated runs on the same source-date.
+                supabase.table("lakes_history").upsert(
+                    payload_history,
+                    on_conflict="lake_id,measured_at,source",
+                    ignore_duplicates=True,
+                ).execute()
                 ok_history += 1
 
                 # Only seed `lakes_current` if the lake has no row yet

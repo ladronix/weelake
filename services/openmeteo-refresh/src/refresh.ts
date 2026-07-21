@@ -111,16 +111,20 @@ async function refreshLake(lake: Lake): Promise<{ ok: boolean; source: string; t
     });
   if (eCur) console.error(`[${lake.slug}] current upsert failed:`, eCur.message);
 
-  // Append history
+  // Append history (idempotent — unique index on
+  // (lake_id, measured_at, source) drops same-day repeats).
   const { error: eHist } = await supabase
     .from("lakes_history")
-    .insert({
-      lake_id: lake.id,
-      temp_c: value.temp_c,
-      measured_at: value.measured_at,
-      source,
-      quality,
-    });
+    .upsert(
+      {
+        lake_id: lake.id,
+        temp_c: value.temp_c,
+        measured_at: value.measured_at,
+        source,
+        quality,
+      },
+      { onConflict: "lake_id,measured_at,source", ignoreDuplicates: true },
+    );
   if (eHist) console.error(`[${lake.slug}] history insert failed:`, eHist.message);
 
   return { ok: !eCur, source, temp: value.temp_c };
