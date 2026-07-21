@@ -7,18 +7,27 @@ import { createSupabaseServiceClient } from "@/lib/supabase";
  * Cached for 5 minutes at edge.
  *
  * Returns:
- *   total_lakes      — how many lakes we know about
- *   countries_count  — how many distinct countries they span
- *   max_temp_c       — warmest current reading
- *   min_temp_c       — coldest current reading
- *   last_sync_at     — the newest `updated_at` across `lakes_current`,
- *                      i.e. when a background worker last successfully
- *                      upserted a temperature into the DB
- *   sources          — { source: count } distribution across
- *                      `lakes_current.source` (e.g. openmeteo_forecast,
- *                      openmeteo_marine, copernicus_cds)
- *   updated_at       — this endpoint's own response timestamp (kept
- *                      for backwards compat with older callers)
+ *   total_lakes         — how many lakes we know about
+ *   countries_count     — how many distinct countries they span
+ *   max_temp_c          — warmest current reading
+ *   min_temp_c          — coldest current reading
+ *   last_sync_at        — the newest `updated_at` across `lakes_current`,
+ *                         i.e. when a background worker last successfully
+ *                         upserted a temperature into the DB
+ *   sources             — { source: count } distribution across
+ *                         `lakes_current.source` — the LIVE sources
+ *                         users see on the map right now (Open-Meteo
+ *                         forecast + marine)
+ *   history_sources     — { source: count } distribution across
+ *                         `lakes_history.source` — includes archive
+ *                         sources that never appear in lakes_current
+ *                         because their latency is too long for a live
+ *                         reading (e.g. Copernicus LSWT, ~6-month lag)
+ *   history_latest_at   — { source: iso } newest `measured_at` per
+ *                         history source. Lets the UI show 'Copernicus
+ *                         last covered up to <date>' instead of hiding
+ *                         a source that simply hasn't refreshed today.
+ *   updated_at          — this endpoint's own response timestamp
  */
 export async function GET() {
   const supabase = createSupabaseServiceClient();
@@ -30,6 +39,7 @@ export async function GET() {
     { data: minRow },
     { data: latestSync },
     { data: sourcesRaw },
+    { data: historyRaw },
   ] = await Promise.all([
     supabase.from("lakes").select("*", { count: "exact", head: true }),
     supabase.from("lakes").select("country_code"),
@@ -37,6 +47,7 @@ export async function GET() {
     supabase.from("lakes_current").select("temp_c").order("temp_c", { ascending: true }).limit(1).maybeSingle(),
     supabase.from("lakes_current").select("updated_at").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("lakes_current").select("source"),
+    supabase.from("lakes_history").select("source, measured_at"),
   ]);
 
   const uniqueCountries = new Set((allCountries ?? []).map((r) => r.country_code)).size;
@@ -47,6 +58,17 @@ export async function GET() {
     sources[key] = (sources[key] ?? 0) + 1;
   }
 
+  const history_sources: Record<string, number> = {};
+  const history_latest_at: Record<string, string> = {};
+  for (const row of historyRaw ?? []) {
+    const key = row.source ?? "unknown";
+    history_sources[key] = (history_sources[key] ?? 0) + 1;
+    const t = row.measured_at as string | null;
+    if (t && (!history_latest_at[key] || t > history_latest_at[key])) {
+      history_latest_at[key] = t;
+    }
+  }
+
   return NextResponse.json(
     {
       total_lakes: totalLakes ?? 0,
@@ -55,6 +77,8 @@ export async function GET() {
       min_temp_c: minRow?.temp_c ?? null,
       last_sync_at: latestSync?.updated_at ?? null,
       sources,
+      history_sources,
+      history_latest_at,
       updated_at: new Date().toISOString(),
     },
     { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800" } },

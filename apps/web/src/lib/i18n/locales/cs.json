@@ -10,6 +10,8 @@
   "sync.lastUpdated": "Naposledy synchronizováno {ago}",
   "sync.lastUpdatedLong": "Data byla naposledy synchronizována {ago}",
   "sync.sources": "Zdroje",
+  "sync.sourcesLive": "Živé zdroje",
+  "sync.sourcesArchive": "Historické záznamy",
 
   "hero.live": "Živě · aktualizace každou hodinu · Zdarma navždy",
   "hero.title1": "Každé jezero.",

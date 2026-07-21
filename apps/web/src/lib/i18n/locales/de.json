@@ -10,6 +10,8 @@
   "sync.lastUpdated": "Zuletzt synchronisiert {ago}",
   "sync.lastUpdatedLong": "Daten wurden zuletzt synchronisiert {ago}",
   "sync.sources": "Quellen",
+  "sync.sourcesLive": "Live-Quellen",
+  "sync.sourcesArchive": "Historische Belege",
 
   "hero.live": "Live · stündliches Update · Für immer kostenlos",
   "hero.title1": "Jeder See.",

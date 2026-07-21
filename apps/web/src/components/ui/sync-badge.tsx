@@ -12,7 +12,13 @@ interface Stats {
   total_lakes: number;
   countries_count: number;
   last_sync_at: string | null;
+  /** Sources currently powering `lakes_current` (live map view). */
   sources: Record<string, number>;
+  /** Sources that ever appeared in `lakes_history` — includes archive
+      sources that are too slow for the live view (e.g. Copernicus). */
+  history_sources?: Record<string, number>;
+  /** Newest `measured_at` per history source. */
+  history_latest_at?: Record<string, string>;
 }
 
 /**
@@ -95,7 +101,7 @@ export function SyncBadge({ className, compact }: { className?: string; compact?
       {showTooltip && (
         <div
           role="tooltip"
-          className="absolute top-full right-0 mt-2 w-64 rounded-2xl bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_10px_40px_rgba(14,165,233,0.20)] p-3 z-50 text-left"
+          className="absolute top-full right-0 mt-2 w-72 rounded-2xl bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_10px_40px_rgba(14,165,233,0.20)] p-3 z-50 text-left"
         >
           <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
             {t("sync.title")}
@@ -103,10 +109,13 @@ export function SyncBadge({ className, compact }: { className?: string; compact?
           <div className="text-sm text-deep">
             {t("sync.lastUpdated", { ago: relativeTime(stats.last_sync_at, locale) })}
           </div>
+
+          {/* Live sources — powering lakes_current. These are what
+              the user sees on the map right now. */}
           {Object.keys(stats.sources).length > 0 && (
             <>
               <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-                {t("sync.sources")}
+                {t("sync.sourcesLive")}
               </div>
               <ul className="space-y-0.5 text-xs text-slate-600">
                 {Object.entries(stats.sources)
@@ -120,6 +129,44 @@ export function SyncBadge({ className, compact }: { className?: string; compact?
               </ul>
             </>
           )}
+
+          {/* Archive-only sources — present in lakes_history but not
+              in lakes_current because their latency is too long for
+              the live view (Copernicus LSWT lags ~6 months). Rendered
+              in a separate section so users don't confuse them with
+              today's data. Hidden entirely when no archive-only
+              source exists yet. */}
+          {(() => {
+            const historyOnly = Object.entries(stats.history_sources ?? {})
+              .filter(([src]) => !(src in stats.sources))
+              .sort((a, b) => b[1] - a[1]);
+            if (historyOnly.length === 0) return null;
+            return (
+              <>
+                <div className="mt-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+                  {t("sync.sourcesArchive")}
+                </div>
+                <ul className="space-y-0.5 text-xs text-slate-600">
+                  {historyOnly.map(([source, count]) => {
+                    const latest = stats.history_latest_at?.[source];
+                    return (
+                      <li key={source} className="flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          {sourceLabel(source, t)}
+                          {latest && (
+                            <span className="ml-1 text-slate-400 text-[10px]">
+                              · {new Date(latest).toISOString().slice(0, 10)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="tabular-nums text-slate-500">{count}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -10,6 +10,8 @@
   "sync.lastUpdated": "Last synced {ago}",
   "sync.lastUpdatedLong": "Data was last synced {ago}",
   "sync.sources": "Sources",
+  "sync.sourcesLive": "Live sources",
+  "sync.sourcesArchive": "Historical anchors",
 
   "hero.live": "Live · updated hourly · Free forever",
   "hero.title1": "Every lake.",
