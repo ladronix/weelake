@@ -42,6 +42,7 @@ env/
 
 # Data cache
 data/
+!services/openmeteo-refresh/data/
 *.nc
 *.netcdf
 *.grib

@@ -11,6 +11,7 @@ import { fetchWeather, fetchMarineWaterTemp, conditionFromCode } from "@/lib/ope
 import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { HistoryChart } from "@/components/detail/history-chart";
 import { NearbyLakes } from "@/components/detail/nearby-lakes";
+import { proxyImage } from "@/lib/proxy-image";
 import { ShareButton } from "@/components/detail/share-button";
 import { WaterQualityCard } from "@/components/detail/water-quality-card";
 import { TLabel, PLabel, RelativeTime } from "@/components/ui";
@@ -186,7 +187,7 @@ export default async function LakeDetailPage({ params }: { params: Promise<{ slu
                   strong tint so we still get the temperature-coded feel. */}
               {lake.photo_url && (
                 <img
-                  src={lake.photo_url}
+                  src={proxyImage(lake.photo_url)!}
                   alt=""
                   aria-hidden="true"
                   loading="lazy"

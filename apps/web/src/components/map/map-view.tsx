@@ -15,6 +15,7 @@ import { bucketForTemp, formatTemp, assessSwim } from "@/lib/temperature";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useT, useP } from "@/lib/i18n";
+import { proxyImage } from "@/lib/proxy-image";
 import { IconButton, TempPill, GlassCard, RelativeTime } from "@/components/ui";
 
 /**
@@ -307,50 +308,21 @@ export function MapView() {
 
   // Switch basemap.
   //
-  // MapLibre's `setStyle()` wipes any runtime-added source/layer by
-  // default. We handle this in TWO places:
-  //   1. transformStyle callback here splices our sources/layers into
-  //      the new style object BEFORE MapLibre commits it, avoiding
-  //      even a single-frame flicker.
-  //   2. The `style.load` listener in the installLayers effect below
-  //      unconditionally re-adds them after the new style is applied.
-  //      Together with the `if (map.getLayer(...))` guards inside
-  //      installLayers, this is idempotent — whatever survived from
-  //      transformStyle stays, whatever got wiped is put back.
-  //
-  // We keep both layers of defence because transformStyle behaviour
-  // has historically differed between raster (satellite Esri) and
-  // vector (Carto light/dark/streets) styles, and empirically the
-  // satellite path lost pin visibility without the re-install path.
+  // MapLibre's `setStyle()` wipes every runtime-added source and
+  // layer. We deliberately DON'T use transformStyle — it caused
+  // subtle rendering bugs where layers appeared bound but the paint
+  // never showed pins on the satellite basemap (we suspect the
+  // spliced layer specs kept a stale internal source-uid). Instead
+  // we let MapLibre do a full clean swap, and re-install every
+  // runtime source/layer from the `styledata` + `idle` handlers
+  // in the effect below. The re-install is idempotent, cheap, and
+  // guaranteed correct because each source/layer is constructed
+  // fresh in JS.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const style = BASEMAPS[basemap].style;
-
-    type StyleSpec = {
-      sources?: Record<string, unknown>;
-      layers?: Array<{ id: string; [k: string]: unknown }>;
-      [k: string]: unknown;
-    };
-    const transformStyle = (previous: StyleSpec | null | undefined, next: StyleSpec): StyleSpec => {
-      if (!previous) return next;
-      const keepSources: Record<string, unknown> = {};
-      const keepLayers: Array<{ id: string; [k: string]: unknown }> = [];
-      const KEEP_PREFIXES = ["lake-", "user-loc", "rain-radar"];
-      for (const [id, src] of Object.entries(previous.sources ?? {})) {
-        if (KEEP_PREFIXES.some((p) => id.startsWith(p))) keepSources[id] = src;
-      }
-      for (const layer of previous.layers ?? []) {
-        if (KEEP_PREFIXES.some((p) => layer.id.startsWith(p))) keepLayers.push(layer);
-      }
-      return {
-        ...next,
-        sources: { ...(next.sources ?? {}), ...keepSources },
-        layers: [...(next.layers ?? []), ...keepLayers],
-      };
-    };
-
-    map.setStyle(style as never, { diff: false, transformStyle } as never);
+    map.setStyle(style as never, { diff: false } as never);
   }, [basemap]);
 
   // --------------------------------------------------------------------
@@ -393,6 +365,12 @@ export function MapView() {
     if (!map) return;
 
     const installLayers = () => {
+      // styledata fires many times per style transition. Bail out
+      // until the style is FULLY loaded so we don't try to add
+      // sources/layers to a half-torn-down style — that's what was
+      // silently failing on the satellite basemap swap.
+      if (!map.isStyleLoaded()) return;
+
       // After setStyle() MapLibre wipes runtime sources/layers. The
       // transformStyle callback re-adds them but ONLY if the previous
       // style had them (i.e. not on first paint). We re-add here as
@@ -475,7 +453,7 @@ export function MapView() {
         filter: ["has", "point_count"],
         layout: {
           "text-field": "{point_count_abbreviated}",
-          "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+          "text-font": ["Open Sans Bold", "Noto Sans Bold"],
           "text-size": 13,
           "text-allow-overlap": true,
         },
@@ -497,7 +475,7 @@ export function MapView() {
             ["number-format", ["get", "temp"], { "min-fraction-digits": 0, "max-fraction-digits": 0 }],
             "°",
           ],
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-font": ["Open Sans Bold", "Noto Sans Bold"],
           "text-size": [
             "interpolate", ["linear"], ["zoom"],
             3, 11,
@@ -544,7 +522,18 @@ export function MapView() {
       }
 
       // Interactions.
-      map.on("click", "lake-clusters", async (e) => {
+      //
+      // These use `map.on("click", "layerId", handler)` — those
+      // handlers are keyed on layer id, so they survive a setStyle()
+      // wipe as long as the layer is re-added. But calling `map.on`
+      // AGAIN inside installLayers on every styledata fire would
+      // stack duplicate handlers (three basemap switches = four
+      // clicks per feature). We bind them exactly once via a
+      // marker property on the map instance.
+      const mapWithMarker = map as maplibregl.Map & { __weelakeInteractionsBound?: boolean };
+      if (!mapWithMarker.__weelakeInteractionsBound) {
+        mapWithMarker.__weelakeInteractionsBound = true;
+        map.on("click", "lake-clusters", async (e) => {
         const feats = map.queryRenderedFeatures(e.point, { layers: ["lake-clusters"] });
         const first = feats[0];
         if (!first?.properties?.cluster_id) return;
@@ -597,6 +586,7 @@ export function MapView() {
       map.on("mouseleave", "lake-dots", onLeave);
       map.on("mouseenter", "lake-clusters", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "lake-clusters", () => { map.getCanvas().style.cursor = ""; });
+      } // end interactions bind guard
 
       // Immediately seed the source with whatever `filteredRef.current` is —
       // otherwise we'd wait for the next `filtered` change to push data,
@@ -622,23 +612,30 @@ export function MapView() {
       }
     };
 
-    // MapLibre fires `style.load` once per style — first mount + every
-    // setStyle() call. If the style is already loaded at mount time
-    // (unlikely but possible under HMR) we call it directly.
+    // MapLibre doesn't have a `style.load` event — the closest thing
+    // is `styledata`, which fires many times per style (sprite fetch,
+    // glyph fetch, tile.json fetch, etc.). We attach installLayers to
+    // it and rely on addSourceOnce / addLayerOnce being idempotent:
+    // the first fire may see the source already present (transformStyle
+    // spliced it in), later fires no-op. What matters is that AT LEAST
+    // ONE fire happens AFTER the wipe on the satellite path — and
+    // styledata guarantees that.
+    //
+    // Belt AND braces: `idle` fires when the map is fully rendered
+    // and nothing is pending — an even later, safer trigger.
     if (map.isStyleLoaded()) installLayers();
     map.on("styledata", installLayers);
-    // Also install once initial `load` fires — MapLibre only fires
-    // `style.load` on setStyle(), not on the very first init. Belt and
-    // braces: `map.once("load", installLayers)` catches the first paint.
+    map.on("idle", installLayers);
     map.once("load", installLayers);
 
     return () => {
       map.off("styledata", installLayers);
+      map.off("idle", installLayers);
     };
     // Deliberately empty deps: register the install listener ONCE. It
-    // will re-fire on every subsequent `setStyle()` (which triggers a
-    // fresh `style.load`), keeping our sources+layers alive across
-    // basemap swaps without any React-side re-registration race.
+    // will re-fire on every subsequent `setStyle()` (which triggers
+    // fresh `styledata` events), keeping our sources+layers alive
+    // across basemap swaps without any React-side re-registration race.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -882,7 +879,7 @@ export function MapView() {
       <aside
         className={cn(
           "hidden md:flex flex-col",
-          "absolute left-3 top-[75px] bottom-24 w-[340px] lg:w-[380px] z-30",
+          "absolute left-3 top-[92px] bottom-24 w-[340px] lg:w-[380px] z-30",
           "rounded-3xl bg-white/95 backdrop-blur-xl border border-white/60",
           "shadow-[0_10px_40px_rgba(14,165,233,0.20)] overflow-hidden",
           !showList && "md:hidden",
@@ -917,7 +914,7 @@ export function MapView() {
             type="button"
             onClick={() => setShowList(true)}
             className={cn(
-              "hidden md:inline-flex absolute top-[75px] left-3 z-30",
+              "hidden md:inline-flex absolute top-[92px] left-3 z-30",
               "h-11 w-11 items-center justify-center",
               "rounded-full bg-white/95 backdrop-blur-xl border border-white/60",
               "shadow-[0_8px_30px_rgba(14,165,233,0.20)] text-water-700",
@@ -934,7 +931,7 @@ export function MapView() {
         )}
 
         {/* Mobile: top search + filter — sits below the floating nav */}
-        <div className="md:hidden absolute top-[68px] left-3 right-3 z-30 flex gap-2 items-center">
+        <div className="md:hidden absolute top-[82px] left-3 right-3 z-30 flex gap-2 items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
             <input
@@ -974,7 +971,7 @@ export function MapView() {
             map bounds. Replaces the old separate '{n} lakes' pill that
             lived inside the sidebar and the standalone 'Search this
             area' pill floating above. */}
-        <div className="hidden md:flex absolute top-[75px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
+        <div className="hidden md:flex absolute top-[92px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
           <span className="text-sm font-semibold text-deep tabular-nums">
             {p("map.lakesShown", filtered.length)}
           </span>
@@ -1018,10 +1015,10 @@ export function MapView() {
         )}
 
         {/* Right controls stack — Layers menu on top, then zoom /
-            locate / reset. Extra top offset (top-[75px]) gives a
+            locate / reset. Extra top offset (top-[92px]) gives a
             clear vertical gap between the floating nav pill and the
             first map control, per user feedback. */}
-        <div className="absolute top-[75px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
+        <div className="absolute top-[92px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
           <div className="relative">
             <button
               type="button"
@@ -1040,7 +1037,16 @@ export function MapView() {
               <Layers className="h-5 w-5" aria-hidden="true" />
             </button>
             {showLayerMenu && (
-              <GlassCard variant="light" className="absolute right-0 top-14 w-64 p-3 z-50">
+              // Popover opens to the LEFT of the Layers button so it
+              // doesn't cover the zoom / locate / reset stack that
+              // lives immediately below. `right-14` sits it exactly
+              // one button-width to the left of the trigger; `top-0`
+              // aligns the top edges. On very narrow viewports we
+              // fall back to below the button to stay in view.
+              <GlassCard
+                variant="light"
+                className="absolute right-14 top-0 w-64 p-3 z-50 max-md:right-0 max-md:top-14"
+              >
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 px-1 font-semibold">{t("map.basemap")}</div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {(["light", "dark", "streets", "satellite"] as BasemapKey[]).map((k) => {
@@ -1475,7 +1481,7 @@ function SidebarContent(props: {
                 {l.photo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={l.photo_url}
+                    src={proxyImage(l.photo_url)!}
                     alt=""
                     className="absolute inset-0 h-full w-full object-cover"
                     loading="lazy"
@@ -1588,7 +1594,7 @@ function MobileBottomSheet({
                   {l.photo_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={l.photo_url}
+                      src={proxyImage(l.photo_url)!}
                       alt=""
                       className="absolute inset-0 h-full w-full object-cover"
                       loading="lazy"

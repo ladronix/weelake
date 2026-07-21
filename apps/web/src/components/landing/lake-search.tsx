@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Search, MapPin, Locate, X, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { proxyImage } from "@/lib/proxy-image";
 import { cn } from "@/lib/utils";
 import { TempPill } from "@/components/ui";
 import { useT } from "@/lib/i18n";
@@ -266,7 +267,7 @@ export function LakeSearch({ autofocus, onSelect, placeholder, compact }: Props)
                     <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-water-100 flex items-center justify-center">
                       {r.photo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={r.photo_url} alt={r.name} className="h-full w-full object-cover" />
+                        <img src={proxyImage(r.photo_url)!} alt={r.name} className="h-full w-full object-cover" />
                       ) : (
                         <MapPin className="h-5 w-5 text-water-500" />
                       )}

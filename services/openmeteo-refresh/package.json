@@ -8,7 +8,8 @@
     "dev":   "tsx watch src/refresh.ts",
     "backfill": "tsx src/backfill.ts",
     "photos": "tsx src/photos-backfill.ts",
-    "seed:more": "tsx src/seed-more.ts"
+    "seed:more": "tsx src/seed-more.ts",
+    "seed:batch-2": "tsx src/seed-batch-2.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",
