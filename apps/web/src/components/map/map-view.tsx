@@ -308,21 +308,46 @@ export function MapView() {
 
   // Switch basemap.
   //
-  // MapLibre's `setStyle()` wipes every runtime-added source and
-  // layer. We deliberately DON'T use transformStyle — it caused
-  // subtle rendering bugs where layers appeared bound but the paint
-  // never showed pins on the satellite basemap (we suspect the
-  // spliced layer specs kept a stale internal source-uid). Instead
-  // we let MapLibre do a full clean swap, and re-install every
-  // runtime source/layer from the `styledata` + `idle` handlers
-  // in the effect below. The re-install is idempotent, cheap, and
-  // guaranteed correct because each source/layer is constructed
-  // fresh in JS.
+  // Uses `setStyle` with a transformStyle callback that rewrites
+  // every basemap's `glyphs` URL to a single font server (Carto's
+  // — which has CORS and stocks 'Open Sans Bold'). See the comment
+  // on the const above for the pin-visibility root cause this
+  // guards against.
+  //
+  // We skip the first invocation of this effect: the initial map
+  // constructor already loaded BASEMAPS[basemap].style, and calling
+  // setStyle() before that finishes triggers an in-flight abort
+  // that shows up as a scary-looking 'sprite.json ERR_ABORTED' in
+  // the network panel. isFirst gate keeps the console clean.
+  const isFirstBasemapRender = useRef(true);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (isFirstBasemapRender.current) {
+      isFirstBasemapRender.current = false;
+      // Still need to apply the glyphs override on the very first
+      // style — do it once the initial style has finished loading.
+      const applyInitial = () => {
+        const current = map.getStyle();
+        if (current && "glyphs" in current) {
+          const nextStyle = {
+            ...current,
+            glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+          };
+          map.setStyle(nextStyle as never, { diff: false } as never);
+        }
+      };
+      if (map.isStyleLoaded()) applyInitial();
+      else map.once("styledata", applyInitial);
+      return;
+    }
     const style = BASEMAPS[basemap].style;
-    map.setStyle(style as never, { diff: false } as never);
+    type StyleSpec = { glyphs?: string; [k: string]: unknown };
+    const transformStyle = (_prev: StyleSpec | null | undefined, next: StyleSpec): StyleSpec => ({
+      ...next,
+      glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+    });
+    map.setStyle(style as never, { diff: false, transformStyle } as never);
   }, [basemap]);
 
   // --------------------------------------------------------------------
@@ -453,7 +478,7 @@ export function MapView() {
         filter: ["has", "point_count"],
         layout: {
           "text-field": "{point_count_abbreviated}",
-          "text-font": ["Open Sans Bold", "Noto Sans Bold"],
+          "text-font": ["Open Sans Bold"],
           "text-size": 13,
           "text-allow-overlap": true,
         },
@@ -475,7 +500,7 @@ export function MapView() {
             ["number-format", ["get", "temp"], { "min-fraction-digits": 0, "max-fraction-digits": 0 }],
             "°",
           ],
-          "text-font": ["Open Sans Bold", "Noto Sans Bold"],
+          "text-font": ["Open Sans Bold"],
           "text-size": [
             "interpolate", ["linear"], ["zoom"],
             3, 11,
