@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useT, useP } from "@/lib/i18n";
 import { proxyImage } from "@/lib/proxy-image";
+import { SortDropdown, type SortOption } from "@/components/ui";
 import { IconButton, TempPill, GlassCard, RelativeTime } from "@/components/ui";
 
 /**
@@ -108,6 +109,9 @@ const BASEMAPS: Record<BasemapKey, { label: string; icon: typeof MapIcon; style:
 };
 
 type SortKey = "importance" | "warmest" | "coldest" | "name" | "distance" | "area";
+// Re-exported from the shared UI library so filter drawer / list
+// header / mobile sheet all use the same option table.
+// See apps/web/src/components/ui/sort-dropdown.tsx.
 
 export function MapView() {
   const t = useT();
@@ -1200,6 +1204,9 @@ export function MapView() {
           filtered={filtered}
           onOpen={openLake}
           hideForSelection={!!selected}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          hasLocation={!!userLoc}
         />
       </div>
 
@@ -1225,6 +1232,29 @@ export function MapView() {
 }
 
 // ---------- SIDEBAR CONTENT (desktop) ----------
+/**
+ * Sort options for the map list, memoised per-locale + per-location.
+ * Kept as a hook (not a module-level const) because the labels come
+ * out of the i18n runtime and the "distance" option only exists when
+ * we actually have the user's geolocation.
+ */
+function useSortOptions(hasLocation: boolean): SortOption[] {
+  const t = useT();
+  return useMemo<SortOption[]>(() => {
+    const base: SortOption[] = [
+      { value: "importance", glyph: "⭐", label: t("sort.top") },
+      { value: "warmest",    glyph: "🔥", label: t("sort.warmest") },
+      { value: "coldest",    glyph: "❄",  label: t("sort.coldest") },
+      { value: "area",       glyph: "🌊", label: t("sort.area") },
+      { value: "name",       glyph: "🔤", label: t("sort.nameFull") },
+    ];
+    if (hasLocation) {
+      base.push({ value: "distance", glyph: "📍", label: t("sort.distanceFull") });
+    }
+    return base;
+  }, [t, hasLocation]);
+}
+
 function SidebarContent(props: {
   filtered: LakeMarker[];
   countries: string[];
@@ -1321,6 +1351,16 @@ function SidebarContent(props: {
           <span className="rounded-full bg-water-100 text-water-700 px-2.5 py-1 font-semibold">
             {p("map.lakesShown", filtered.length)}
           </span>
+          {/* Sort control lives here (list-header context), NOT
+              inside the filter drawer — sorting is a view concern,
+              filters are a data concern. See docs/PRINCIPLES.md § 1. */}
+          <SortDropdown
+            variant="chip"
+            value={sortBy}
+            onChange={setSortBy}
+            options={useSortOptions(hasLocation)}
+            className="ml-auto"
+          />
           {countryFilter !== "all" && (
             <button
               onClick={() => setCountryFilter("all")}
@@ -1388,22 +1428,6 @@ function SidebarContent(props: {
               className="flex-1 accent-water-500"
             />
           </div>
-        </label>
-
-        <label className="block text-xs">
-          <span className="text-slate-500 font-medium">{t("filter.sortBy")}</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortKey)}
-            className="mt-1 w-full rounded-full border border-water-200/70 bg-white/90 px-3 py-2 outline-none focus:ring-2 focus:ring-water-400 text-sm font-medium text-deep"
-          >
-            <option value="importance">⭐ {t("sort.top")}</option>
-            <option value="warmest">🔥 {t("sort.warmest")}</option>
-            <option value="coldest">❄ {t("sort.coldest")}</option>
-            <option value="area">🌊 {t("sort.area")}</option>
-            <option value="name">🔤 {t("sort.nameFull")}</option>
-            {hasLocation && <option value="distance">📍 {t("sort.distanceFull")}</option>}
-          </select>
         </label>
 
         {/* Swim-safety filter (segmented control). */}
@@ -1544,16 +1568,20 @@ function SidebarContent(props: {
 
 // ---------- MOBILE BOTTOM SHEET ----------
 function MobileBottomSheet({
-  state, setState, filtered, onOpen, hideForSelection,
+  state, setState, filtered, onOpen, hideForSelection, sortBy, setSortBy, hasLocation,
 }: {
   state: "peek" | "half" | "full" | "hidden";
   setState: (s: "peek" | "half" | "full" | "hidden") => void;
   filtered: LakeMarker[];
   onOpen: (l: LakeMarker) => void;
   hideForSelection: boolean;
+  sortBy: SortKey;
+  setSortBy: (v: SortKey) => void;
+  hasLocation: boolean;
 }) {
   const t = useT();
   const p = useP();
+  const sortOptions = useSortOptions(hasLocation);
   if (hideForSelection) return null;
   const heights = {
     hidden: "translate-y-full",
@@ -1585,15 +1613,21 @@ function MobileBottomSheet({
 
         {/* Header */}
         <div className="px-4 pb-3 flex items-center gap-3 shrink-0 border-b border-water-100/50">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-deep">
               {p("map.lakesInView", filtered.length)}
             </div>
             <div className="text-[11px] text-slate-500">{t("map.tapToJump")}</div>
           </div>
+          <SortDropdown
+            variant="chip"
+            value={sortBy}
+            onChange={setSortBy}
+            options={sortOptions}
+          />
           <button
             onClick={() => setState(state === "full" ? "peek" : "full")}
-            className="h-9 w-9 rounded-full bg-water-100 text-water-700 flex items-center justify-center"
+            className="h-9 w-9 rounded-full bg-water-100 text-water-700 flex items-center justify-center shrink-0"
             aria-label={state === "full" ? t("map.collapse") : t("map.expand")}
           >
             {state === "full"
@@ -1830,32 +1864,6 @@ function MobileFilterModal(props: {
                 )}
               >
                 {t}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">{t("filter.sortBy")}</div>
-          <div className="flex flex-wrap gap-2">
-            {([
-              ["importance", `⭐ ${t("sort.top")}`],
-              ["warmest",    `🔥 ${t("sort.warmest")}`],
-              ["coldest",    `❄ ${t("sort.coldest")}`],
-              ["area",       `🌊 ${t("sort.area")}`],
-              ["name",       `🔤 ${t("sort.name")}`],
-            ] as const).map(([s, label]) => (
-              <button
-                key={s}
-                onClick={() => setSortBy(s)}
-                className={cn(
-                  "rounded-full px-4 py-2 text-sm font-medium border transition",
-                  sortBy === s
-                    ? "bg-water-500 text-white border-water-600 shadow"
-                    : "bg-white text-slate-700 border-water-200 hover:bg-water-50",
-                )}
-              >
-                {label}
               </button>
             ))}
           </div>
