@@ -11,3 +11,5 @@ export { TLabel, PLabel } from "./t-label";
 export { RelativeTime } from "./relative-time";
 export { SyncBadge } from "./sync-badge";
 export { SortDropdown, type SortKey, type SortOption } from "./sort-dropdown";
+export { CountryFlag } from "./country-flag";
+export { MiniTempChart, type ChartPoint } from "./mini-temp-chart";

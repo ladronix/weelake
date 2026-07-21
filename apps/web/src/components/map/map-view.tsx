@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useT, useP } from "@/lib/i18n";
 import { proxyImage } from "@/lib/proxy-image";
-import { SortDropdown, type SortOption } from "@/components/ui";
+import { SortDropdown, type SortOption, CountryFlag, MiniTempChart, type ChartPoint } from "@/components/ui";
 import { IconButton, TempPill, GlassCard, RelativeTime } from "@/components/ui";
 
 /**
@@ -272,9 +272,20 @@ export function MapView() {
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
 
+    // Bootstrap with a minimal empty style so the subsequent
+    // useEffect([basemap]) can apply the real basemap + our unified
+    // glyphs URL in a single setStyle() call — with no in-flight
+    // fetches to abort. Without this bootstrap the constructor's own
+    // style fetch races the effect's setStyle and we get scary
+    // sprite.json / tiles.json ERR_ABORTED entries in DevTools.
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: BASEMAPS[basemap].style as never,
+      style: {
+        version: 8,
+        sources: {},
+        layers: [{ id: "background", type: "background", paint: { "background-color": "#e0f2fe" } }],
+        glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+      } as never,
       center: [14, 49],
       zoom: 4.2,
       attributionControl: false,
@@ -313,38 +324,20 @@ export function MapView() {
   // Switch basemap.
   //
   // Uses `setStyle` with a transformStyle callback that rewrites
-  // every basemap's `glyphs` URL to a single font server (Carto's
-  // — which has CORS and stocks 'Open Sans Bold'). See the comment
-  // on the const above for the pin-visibility root cause this
-  // guards against.
+  // every basemap's `glyphs` URL to a single font server (Carto's —
+  // which has CORS and stocks 'Open Sans Bold'). Without this
+  // override the four basemaps ship four different glyphs URLs and
+  // no single font name resolves on all four — that's the root
+  // cause of the pins-vanish-on-satellite bug. See the block
+  // comment on the map constructor above.
   //
-  // We skip the first invocation of this effect: the initial map
-  // constructor already loaded BASEMAPS[basemap].style, and calling
-  // setStyle() before that finishes triggers an in-flight abort
-  // that shows up as a scary-looking 'sprite.json ERR_ABORTED' in
-  // the network panel. isFirst gate keeps the console clean.
-  const isFirstBasemapRender = useRef(true);
+  // The map is bootstrapped with a minimal empty style so this
+  // effect's first invocation is the ONLY setStyle() in flight —
+  // no aborts, no console noise, no race with the constructor's
+  // fetch.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (isFirstBasemapRender.current) {
-      isFirstBasemapRender.current = false;
-      // Still need to apply the glyphs override on the very first
-      // style — do it once the initial style has finished loading.
-      const applyInitial = () => {
-        const current = map.getStyle();
-        if (current && "glyphs" in current) {
-          const nextStyle = {
-            ...current,
-            glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
-          };
-          map.setStyle(nextStyle as never, { diff: false } as never);
-        }
-      };
-      if (map.isStyleLoaded()) applyInitial();
-      else map.once("styledata", applyInitial);
-      return;
-    }
     const style = BASEMAPS[basemap].style;
     type StyleSpec = { glyphs?: string; [k: string]: unknown };
     const transformStyle = (_prev: StyleSpec | null | undefined, next: StyleSpec): StyleSpec => ({
@@ -1998,8 +1991,26 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Fetch trend when a new lake is opened. The endpoint is
+  // aggressively cached (s-maxage=900) so re-clicking the same pin
+  // is instant.
+  const [trend, setTrend] = useState<ChartPoint[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setTrend(null);
+    fetch(`/api/lake/${lake.slug}/trend`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        setTrend(j.points as ChartPoint[]);
+      })
+      .catch(() => { /* leave null → shows placeholder */ });
+    return () => { cancelled = true; };
+  }, [lake.slug]);
+
   return (
     <div className="absolute left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 sm:w-[380px] z-40 rounded-4xl overflow-hidden bg-white/95 backdrop-blur-xl shadow-[0_20px_60px_rgba(14,165,233,0.25)] border border-white/60 safe-b">
+      {/* Header block — gradient background per water temp bucket. */}
       <div
         className="relative px-5 pt-5 pb-4 text-white"
         style={{ background: `linear-gradient(135deg, ${bucket.color}, #0369A1)` }}
@@ -2013,13 +2024,21 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="text-[10px] uppercase tracking-wider opacity-90 pr-10">
-          {lake.country_code} · {lake.type}
+
+        {/* Country flag + type chip row. Flag is more legible than
+            the ISO code alone and reinforces the location context. */}
+        <div className="flex items-center gap-2 pr-10">
+          <CountryFlag code={lake.country_code} height={14} />
+          <span className="text-[10px] uppercase tracking-wider opacity-90">
+            {lake.country_code} · {lake.type}
+          </span>
         </div>
         <div className="mt-1 text-xl font-semibold leading-tight pr-10">{lake.name}</div>
         {lake.name_local && lake.name_local !== lake.name && (
           <div className="text-xs opacity-90 pr-10">{lake.name_local}</div>
         )}
+
+        {/* Big temperature + swim assessment + source chip. */}
         <div className="mt-4 flex items-end gap-4">
           <div className="text-5xl font-semibold tabular-nums leading-none">{formatTemp(lake.temp_c, 1)}</div>
           <div className="text-xs opacity-90 pb-1 space-y-0.5">
@@ -2032,22 +2051,62 @@ function SelectedSheet({ lake, onClose }: { lake: LakeMarker; onClose: () => voi
             )}
           </div>
         </div>
+
+        {/* Trend chart. Sits INSIDE the gradient header so the white
+            stroke reads on the coloured background. 7-day water
+            temp (solid) vs air temp (dashed). Lets the user see the
+            temperature trajectory without leaving the map. */}
+        <div className="mt-4 rounded-2xl bg-black/10 backdrop-blur-sm px-3 py-2.5 border border-white/15">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-wider opacity-90 mb-1.5">
+            <span className="font-semibold">{t("map.trend7d")}</span>
+            <span className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-0.5 w-3 bg-white rounded" />{t("map.water")}</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-px w-3 border-t border-dashed border-white/70" />{t("map.air")}</span>
+            </span>
+          </div>
+          <MiniTempChart
+            points={trend ?? []}
+            height={72}
+            labels
+            waterLabel={t("map.water")}
+            airLabel={t("map.air")}
+          />
+        </div>
       </div>
 
+      {/* Photo strip — bigger than a thumbnail but still framed by
+          a gentle gradient overlay so the temperature block above
+          stays the visual anchor. */}
+      {lake.photo_url && (
+        <div className="relative h-32 w-full overflow-hidden bg-water-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={proxyImage(lake.photo_url)!}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-black/25 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+        </div>
+      )}
+
+      {/* Action row — Details + Navigate. */}
       <div className="px-4 py-3 grid grid-cols-2 gap-2">
         <Link
           href={`/lake/${lake.slug}`}
           className="rounded-full bg-water-500 hover:bg-water-600 text-white font-medium py-2.5 text-sm flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(14,165,233,0.35)] transition"
         >
-          <Sparkles className="h-4 w-4" /> Details
+          <Sparkles className="h-4 w-4" /> {t("map.details")}
         </Link>
         <a
           href={`https://www.google.com/maps/dir/?api=1&destination=${lake.lat},${lake.lng}`}
           target="_blank"
-          rel="noreferrer"
+          rel="noreferrer noopener"
           className="rounded-full bg-water-50 hover:bg-water-100 text-water-800 font-medium py-2.5 text-sm flex items-center justify-center gap-1.5 transition"
         >
-          <Navigation2 className="h-4 w-4" /> Navigate
+          <Navigation2 className="h-4 w-4" /> {t("map.navigate")}
         </a>
       </div>
     </div>
