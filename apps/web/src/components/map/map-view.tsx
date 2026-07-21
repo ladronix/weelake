@@ -308,18 +308,25 @@ export function MapView() {
   // Switch basemap.
   //
   // MapLibre's `setStyle()` wipes any runtime-added source/layer by
-  // default. Its `transformStyle(previous, next)` callback lets us
-  // splice our custom stuff into the new style before it's committed,
-  // so the swap is atomic — no flicker, no missing layers.
+  // default. We handle this in TWO places:
+  //   1. transformStyle callback here splices our sources/layers into
+  //      the new style object BEFORE MapLibre commits it, avoiding
+  //      even a single-frame flicker.
+  //   2. The `style.load` listener in the installLayers effect below
+  //      unconditionally re-adds them after the new style is applied.
+  //      Together with the `if (map.getLayer(...))` guards inside
+  //      installLayers, this is idempotent — whatever survived from
+  //      transformStyle stays, whatever got wiped is put back.
+  //
+  // We keep both layers of defence because transformStyle behaviour
+  // has historically differed between raster (satellite Esri) and
+  // vector (Carto light/dark/streets) styles, and empirically the
+  // satellite path lost pin visibility without the re-install path.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const style = BASEMAPS[basemap].style;
 
-    // transformStyle receives the previous fully-loaded style spec
-    // (may be null on the very first call) and the incoming style
-    // spec. We return a merged style that carries our lake-points
-    // source + lake-* layers over.
     type StyleSpec = {
       sources?: Record<string, unknown>;
       layers?: Array<{ id: string; [k: string]: unknown }>;
@@ -329,7 +336,7 @@ export function MapView() {
       if (!previous) return next;
       const keepSources: Record<string, unknown> = {};
       const keepLayers: Array<{ id: string; [k: string]: unknown }> = [];
-      const KEEP_PREFIXES = ["lake-", "user-loc"];
+      const KEEP_PREFIXES = ["lake-", "user-loc", "rain-radar"];
       for (const [id, src] of Object.entries(previous.sources ?? {})) {
         if (KEEP_PREFIXES.some((p) => id.startsWith(p))) keepSources[id] = src;
       }
@@ -386,12 +393,24 @@ export function MapView() {
     if (!map) return;
 
     const installLayers = () => {
-      // Guard: don't re-install if source is already present (e.g. HMR).
-      if (map.getSource("lake-points")) return;
+      // After setStyle() MapLibre wipes runtime sources/layers. The
+      // transformStyle callback re-adds them but ONLY if the previous
+      // style had them (i.e. not on first paint). We re-add here as
+      // the definitive path, and use idempotent guards so a repeat
+      // fire (rare, but possible when transformStyle already spliced
+      // everything in) just no-ops on each add.
+      const addSourceOnce = (id: string, spec: maplibregl.SourceSpecification) => {
+        if (map.getSource(id)) return;
+        map.addSource(id, spec);
+      };
+      const addLayerOnce = (spec: maplibregl.LayerSpecification) => {
+        if (map.getLayer(spec.id)) return;
+        map.addLayer(spec);
+      };
 
       const emptyFc = { type: "FeatureCollection" as const, features: [] as never[] };
 
-      map.addSource("lake-points", {
+      addSourceOnce("lake-points", {
         type: "geojson",
         data: emptyFc,
         cluster: true,
@@ -404,14 +423,11 @@ export function MapView() {
         },
       });
 
-      map.addLayer({
+      addLayerOnce({
         id: "lake-heatmap",
         type: "heatmap",
         source: "lake-points",
         maxzoom: 9,
-        // Skip cluster features — they don't carry a `temp` property
-        // (only tempSum + tempCount aggregates), which triggers a null
-        // warning inside the heatmap-weight interpolate expression.
         filter: ["!", ["has", "point_count"]],
         paint: {
           "heatmap-weight": ["interpolate", ["linear"], ["get", "temp"], 0, 0.2, 15, 0.4, 22, 0.8, 30, 1],
@@ -430,7 +446,7 @@ export function MapView() {
         },
       });
 
-      map.addLayer({
+      addLayerOnce({
         id: "lake-clusters",
         type: "circle",
         source: "lake-points",
@@ -452,7 +468,7 @@ export function MapView() {
         },
       });
 
-      map.addLayer({
+      addLayerOnce({
         id: "lake-cluster-count",
         type: "symbol",
         source: "lake-points",
@@ -470,7 +486,7 @@ export function MapView() {
         },
       });
 
-      map.addLayer({
+      addLayerOnce({
         id: "lake-labels",
         type: "symbol",
         source: "lake-points",
@@ -496,35 +512,36 @@ export function MapView() {
         paint: {
           "text-color": "#ffffff",
           "text-halo-color": TEMP_COLOR_RAMP as never,
-          // Fatter halo makes the pill background bigger and gives more
-          // contrast against dark basemaps, where the white number would
-          // otherwise blend into the light-yellow / light-cyan temperature
-          // tint. The blur softens the outer edge into a pill shape.
           "text-halo-width": 10,
           "text-halo-blur": 1.2,
         },
       });
 
-      map.addLayer(
-        {
-          id: "lake-dots",
-          type: "circle",
-          source: "lake-points",
-          filter: ["!", ["has", "point_count"]],
-          paint: {
-            "circle-color": TEMP_COLOR_RAMP as never,
-            "circle-radius": [
-              "interpolate", ["linear"], ["zoom"],
-              2, 2,
-              6, 4,
-              10, 6,
-            ],
-            "circle-stroke-width": 1.5,
-            "circle-stroke-color": "rgba(255,255,255,0.9)",
+      // lake-dots needs to be inserted BELOW lake-labels so the halo
+      // pill sits on top of the dot. `addLayer(spec, beforeId)` only
+      // works if beforeId exists — guard with a getLayer check.
+      if (!map.getLayer("lake-dots")) {
+        map.addLayer(
+          {
+            id: "lake-dots",
+            type: "circle",
+            source: "lake-points",
+            filter: ["!", ["has", "point_count"]],
+            paint: {
+              "circle-color": TEMP_COLOR_RAMP as never,
+              "circle-radius": [
+                "interpolate", ["linear"], ["zoom"],
+                2, 2,
+                6, 4,
+                10, 6,
+              ],
+              "circle-stroke-width": 1.5,
+              "circle-stroke-color": "rgba(255,255,255,0.9)",
+            },
           },
-        },
-        "lake-labels",
-      );
+          map.getLayer("lake-labels") ? "lake-labels" : undefined,
+        );
+      }
 
       // Interactions.
       map.on("click", "lake-clusters", async (e) => {
@@ -715,6 +732,12 @@ export function MapView() {
         type: "raster",
         tiles: [radarTileUrl],
         tileSize: 512,
+        // RainViewer's tile server only supports zoom levels 0..12.
+        // Without maxzoom MapLibre keeps requesting z13+ tiles and the
+        // server responds with 404 + a `Zoom not supported` warning
+        // on every pan — bounding the source shuts that up and lets
+        // MapLibre auto-scale the last valid tile as we zoom in.
+        maxzoom: 12,
         attribution: '<a href="https://www.rainviewer.com/" target="_blank" rel="noreferrer">RainViewer</a>',
       });
       // Insert below lake-heatmap so lake pills stay on top of the rain.
@@ -859,7 +882,7 @@ export function MapView() {
       <aside
         className={cn(
           "hidden md:flex flex-col",
-          "absolute left-3 top-[112px] bottom-24 w-[340px] lg:w-[380px] z-30",
+          "absolute left-3 top-[75px] bottom-24 w-[340px] lg:w-[380px] z-30",
           "rounded-3xl bg-white/95 backdrop-blur-xl border border-white/60",
           "shadow-[0_10px_40px_rgba(14,165,233,0.20)] overflow-hidden",
           !showList && "md:hidden",
@@ -894,7 +917,7 @@ export function MapView() {
             type="button"
             onClick={() => setShowList(true)}
             className={cn(
-              "hidden md:inline-flex absolute top-[112px] left-3 z-30",
+              "hidden md:inline-flex absolute top-[75px] left-3 z-30",
               "h-11 w-11 items-center justify-center",
               "rounded-full bg-white/95 backdrop-blur-xl border border-white/60",
               "shadow-[0_8px_30px_rgba(14,165,233,0.20)] text-water-700",
@@ -911,7 +934,7 @@ export function MapView() {
         )}
 
         {/* Mobile: top search + filter — sits below the floating nav */}
-        <div className="md:hidden absolute top-[100px] left-3 right-3 z-30 flex gap-2 items-center">
+        <div className="md:hidden absolute top-[68px] left-3 right-3 z-30 flex gap-2 items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-water-500 pointer-events-none" />
             <input
@@ -951,7 +974,7 @@ export function MapView() {
             map bounds. Replaces the old separate '{n} lakes' pill that
             lived inside the sidebar and the standalone 'Search this
             area' pill floating above. */}
-        <div className="hidden md:flex absolute top-[112px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
+        <div className="hidden md:flex absolute top-[75px] left-1/2 -translate-x-1/2 z-20 items-center gap-2 rounded-full bg-white/95 backdrop-blur border border-white/60 shadow-lg pl-4 pr-1 py-1">
           <span className="text-sm font-semibold text-deep tabular-nums">
             {p("map.lakesShown", filtered.length)}
           </span>
@@ -995,10 +1018,10 @@ export function MapView() {
         )}
 
         {/* Right controls stack — Layers menu on top, then zoom /
-            locate / reset. Extra top offset (top-[112px]) gives a
+            locate / reset. Extra top offset (top-[75px]) gives a
             clear vertical gap between the floating nav pill and the
             first map control, per user feedback. */}
-        <div className="absolute top-[112px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
+        <div className="absolute top-[75px] right-4 z-20 flex flex-col gap-2 items-end pt-[52px] md:pt-0">
           <div className="relative">
             <button
               type="button"
@@ -1114,14 +1137,12 @@ export function MapView() {
           />
         </div>
 
-        {/* Temperature legend — pinned bottom-right, always visible.
-            Independent of the side panel state, but slides horizontally
-            to the LEFT of the SelectedSheet (380px + gap) when a lake
-            is selected so the two don't overlap. */}
+        {/* Temperature legend — pinned bottom-left corner. The
+            SelectedSheet lives on the RIGHT edge so the legend never
+            needs to slide out of the way. */}
         <div
           className={cn(
-            "hidden md:flex absolute bottom-4 z-10 items-center gap-2 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 text-[11px] font-medium text-slate-700 border border-white/60 transition-[right] duration-200",
-            selected ? "right-[calc(380px+1.5rem)]" : "right-4",
+            "hidden md:flex absolute bottom-4 left-4 z-10 items-center gap-2 rounded-full bg-white/95 backdrop-blur shadow-lg pl-3 pr-4 py-2 text-[11px] font-medium text-slate-700 border border-white/60",
           )}
         >
           <Waves className="h-3.5 w-3.5 text-water-600" aria-hidden="true" />
@@ -1463,9 +1484,6 @@ function SidebarContent(props: {
                 ) : (
                   <div className="absolute inset-0 bg-gradient-to-br from-water-200 to-water-400" />
                 )}
-                <div className="absolute bottom-1 left-1 right-1 flex justify-start">
-                  <TempPill temp={l.temp_c} size="xs" className="!ring-2 !ring-white shadow" />
-                </div>
               </div>
               <span className="flex-1 min-w-0">
                 <span className="block font-medium text-deep truncate">{l.name}</span>
@@ -1479,6 +1497,11 @@ function SidebarContent(props: {
                   </span>
                 )}
               </span>
+              {/* Temperature moved out of the photo tile so nothing
+                  obscures the lake image. TempPill lives in its own
+                  slot to the right of the metadata and shrinks
+                  gracefully on narrow lists. */}
+              <TempPill temp={l.temp_c} size="sm" className="shrink-0" />
               <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
             </button>
           </li>
@@ -1574,9 +1597,6 @@ function MobileBottomSheet({
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-water-200 to-water-400" />
                   )}
-                  <div className="absolute bottom-0.5 left-0.5">
-                    <TempPill temp={l.temp_c} size="xs" className="!ring-2 !ring-white shadow-sm" />
-                  </div>
                 </div>
                 <span className="flex-1 min-w-0">
                   <span className="block font-medium text-deep truncate text-sm">{l.name}</span>
@@ -1590,6 +1610,7 @@ function MobileBottomSheet({
                     </span>
                   )}
                 </span>
+                <TempPill temp={l.temp_c} size="sm" className="shrink-0" />
                 <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-water-500 transition shrink-0" />
               </button>
             </li>
