@@ -1,0 +1,47 @@
+name: ChMI temperature refresh
+
+# ChMI publishes new gauge readings every 10 minutes but we only need
+# a daily heartbeat for the map (real-time is nice but users don't
+# refresh the page every 10 minutes). Runs at 03:15 UTC, 15 minutes
+# after the Open-Meteo fetcher, so Supabase never sees two fetchers
+# competing for connections.
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: chmi-fetch
+  cancel-in-progress: false
+
+jobs:
+  chmi:
+    name: Refresh ChMI in-situ readings
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL:   ${{ secrets.SUPABASE_URL }}
+      SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FORCE_JSON_LOGS:            "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Verify secrets present
+        run: |
+          test -n "$SUPABASE_URL"              || (echo "::error::SUPABASE_URL missing"              && exit 1)
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || (echo "::error::SUPABASE_SERVICE_ROLE_KEY missing" && exit 1)
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Refresh
+        run: pnpm --filter @weelake/fetcher-chmi start
+
+      - name: Summary
+        if: always()
+        run: echo "ChMI fetch finished at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"

@@ -37,7 +37,7 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
 
       - name: Refresh temperatures
-        run: pnpm --filter openmeteo-refresh start
+        run: pnpm --filter @weelake/fetcher-openmeteo start
 
       - name: Summary
         if: always()

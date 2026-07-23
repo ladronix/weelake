@@ -92,11 +92,43 @@ importers:
 
   packages/types: {}
 
-  services/openmeteo-refresh:
+  services/fetchers/_shared/node:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.110.7
+        version: 2.110.7
+    devDependencies:
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  services/fetchers/chmi:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.110.7
+        version: 2.110.7
+      '@weelake/fetcher-lib':
+        specifier: workspace:*
+        version: link:../_shared/node
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  services/fetchers/openmeteo:
     dependencies:
       '@supabase/supabase-js':
         specifier: ^2.47.0
         version: 2.110.7
+      '@weelake/fetcher-lib':
+        specifier: workspace:*
+        version: link:../_shared/node
       tsx:
         specifier: ^4.19.2
         version: 4.23.1

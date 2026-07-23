@@ -42,7 +42,7 @@ jobs:
         run: pnpm --filter web i18n:check
 
       - name: Type-check (worker)
-        run: pnpm --filter openmeteo-refresh exec tsc --noEmit
+        run: pnpm --filter @weelake/fetcher-openmeteo exec tsc --noEmit
 
       - name: Unit tests
         run: pnpm --filter web test
