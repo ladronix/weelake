@@ -1,25 +1,34 @@
-name: Fetch · ChMI (daily)
+name: Fetch · Overpass lake polygons (weekly)
 
-# Note: currently ships an EMPTY station list (see
-# services/fetchers/chmi/data/stations.ts for the reasoning). The
-# workflow is kept alive as infrastructure — the shared fetcher-lib
-# is exercised by a second consumer and re-enabling this later is
-# just editing stations.ts.
+# OpenStreetMap Overpass API — polygon shapes for every lake.
+# Runs weekly on Sunday at 04:30 UTC. Overpass has a query cost
+# budget of 15 s / 2 slots per client, and even with careful
+# rate limiting a 344-lake sweep takes ~30-60 min. Running
+# weekly is plenty — lake shorelines don't change day-to-day.
+#
+# The fetcher skips lakes we already have polygons for, so a
+# retry after a partial success just fills in the gaps rather
+# than re-fetching everything. Pass --rebuild to force.
 
 on:
   schedule:
-    - cron: "15 3 * * *"    # 15 minutes after Open-Meteo, to spread Supabase load
-  workflow_dispatch: {}
+    - cron: "30 4 * * 0"      # Sunday 04:30 UTC
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: "Re-fetch polygons we already have (slow!)"
+        required: false
+        default: "false"
 
 concurrency:
-  group: fetch-chmi
+  group: fetch-overpass
   cancel-in-progress: false
 
 jobs:
   fetch:
-    name: Refresh ChMI in-situ readings
+    name: Refresh lake polygons
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 120
     env:
       NEXT_PUBLIC_SUPABASE_URL:   ${{ secrets.SUPABASE_URL }}
       SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
@@ -33,23 +42,22 @@ jobs:
           node-version: "22"
           cache: pnpm
 
-      - name: Verify secrets present
-        run: |
-          test -n "$SUPABASE_URL"              || (echo "::error::SUPABASE_URL missing"              && exit 1)
-          test -n "$SUPABASE_SERVICE_ROLE_KEY" || (echo "::error::SUPABASE_SERVICE_ROLE_KEY missing" && exit 1)
-
       - run: pnpm install --no-frozen-lockfile
 
-      - name: Refresh
+      - name: Fetch polygons
         run: |
           set -o pipefail
-          pnpm --filter @weelake/fetcher-chmi start 2>&1 | tee /tmp/fetch.log
+          FLAGS=""
+          if [ "${{ github.event.inputs.rebuild }}" = "true" ]; then
+            FLAGS="--rebuild"
+          fi
+          pnpm --filter @weelake/fetcher-overpass start -- $FLAGS 2>&1 | tee /tmp/fetch.log
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "## ChMI · daily refresh"
+            echo "## Overpass · weekly polygon refresh"
             echo ""
             echo "Finished at $(date -u +%FT%TZ)"
             echo ""

@@ -44,7 +44,6 @@ env/
 data/
 !services/openmeteo-refresh/data/
 !services/fetchers/openmeteo/data/
-!services/fetchers/chmi/data/
 *.nc
 *.netcdf
 *.grib

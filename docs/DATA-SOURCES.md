@@ -38,14 +38,19 @@ Sorted by role, then by refresh cadence.
 | Source | Role | Cadence | Latency | Coverage | Access | Quality |
 |---|---|---|---|---|---|---|
 | **Open-Meteo Forecast** | Live + Recent | Hourly upstream, we pull daily | Real-time (sub-hour) | Global (~11 M grid cells; every lake we know) | Free HTTP, CC-BY 4.0 | Air-model-derived → good for well-mixed inland lakes, weaker for deep alpine or stratified reservoirs |
-| **Open-Meteo Marine** | Live + Recent | Hourly upstream, we pull daily | ~1 h | Coastal + inland lakes covered by Baltic/Med SST products (~40 of our 322) | Free HTTP, CC-BY 4.0 | Satellite-derived SST → high on the covered lakes |
-| **ChMI (Czech Hydrometeorological Institute)** | Live + Recent | Daily bulletin + hourly on some sites | 6–24 h | ~30 Czech reservoirs + rivers with public bathing spots | Free HTTP CSV/JSON (unofficial scrape of `chmi.cz`), CC-BY-NC 3.0 CZ | In-situ probe measurements — highest quality where available |
-| **Povodí ČR (5 river basins)** | Live + Recent | Hourly upstream, daily bulletin | 6–24 h | ~60 Czech reservoirs | Free CSV per basin (`pvl.cz`, `pmo.cz`, `poh.cz`, `pod.cz`, `pla.cz`) | In-situ — same quality tier as ChMI |
+| **Open-Meteo Marine** | Live + Recent | Hourly upstream, we pull daily | ~1 h | Coastal + inland lakes covered by Baltic/Med SST products (~40 of our 344) | Free HTTP, CC-BY 4.0 | Satellite-derived SST → high on the covered lakes |
 | **NOAA CoastWatch / NCEI** (planned) | Live + Recent | Daily | 24–48 h | Great Lakes + Alaska + FL + Puget Sound + Chesapeake | Free HTTP, US public domain | Satellite SST — excellent US freshwater coverage |
 | **Copernicus Marine (CMEMS)** | Live + Recent | Daily | 12–48 h | Every marine + brackish "lake" globally (Med, Baltic, Caspian, Great Lakes when reprocessed) | Free (registration), Copernicus License | Satellite-derived, blended forecast + reanalysis |
 | **Copernicus CDS · LSWT v4.5.2** | Anchor | Semiannual (Feb + Aug) | **~6 months** | Every lake globally > ~100 km² | Free (registration + licence acceptance), Copernicus License | ESA CCI daily lake water temperature — gold standard for climate work |
 | **ERA5 reanalysis** (planned) | Anchor + Recent | Daily | ~5 days | Global grid — every lake | Free via CDS, Copernicus License | Model reanalysis; blends observations with a numerical model, good for filling the 6-month gap between LSWT and today |
 | **HydroLAKES + OpenStreetMap** | Registry | Static | N/A | Global (1.4 M lakes globally, ~1000 curated by us) | CC-BY 4.0 / ODbL | Geographic reference, not a temperature source |
+
+### Sources we investigated and rejected
+
+| Source | Why rejected |
+|---|---|
+| **ChMI (Czech Hydrometeorological Institute)** | Scanned all 563 public gauge stations. 238 report a water temperature. But every station physically close to a Czech reservoir turned out to be a **downstream/outflow gauge** measuring hypolimnion water (Slezská Harta reports 4.8°C in July) or a **tributary river station** measuring the inflow, not the reservoir surface. Zero surface-temperature stations on Czech reservoirs. Removed in commit that added this note. |
+| **Povodí ČR (5 basin authorities)** | Each basin has its own website but none publishes a structured JSON/CSV feed for live water temperature. Would require fragile HTML scraping per site; skipped until an official API appears. |
 
 Notes on the "Coverage" column: numbers reflect what the source
 theoretically covers, not what we currently ingest. A fetcher's job is
@@ -104,8 +109,6 @@ services/fetchers/
 │           └── run.py
 ├── openmeteo/           # existing openmeteo-refresh, renamed
 ├── copernicus-lswt/     # existing copernicus-fetcher, renamed
-├── chmi/                # new — Czech Hydrometeorological Institute
-├── povodi/              # new — Povodí water-manager bulletins
 └── era5/                # planned — ERA5 reanalysis
 ```
 
@@ -186,20 +189,15 @@ The fetcher framework unlocks each of these one-by-one:
    lib.
 2. **Add `fetcher_runs` migration + shared lib**. Every fetcher
    instrumented uniformly.
-3. **CHMI fetcher** — cheap first win, big CZ user impact.
-4. **Povodí fetchers** (one per basin) — Vltavy, Ohře, Moravy, Odry,
-   Labe. Each is small; sharing the framework keeps the diff modest.
-5. **`/api/monitor` endpoint + admin dashboard** — visibility so we
-   know which fetchers are healthy.
-6. **ERA5 fetcher** — fills the 5-day-to-6-month gap between live
+3. **ERA5 fetcher** — fills the 5-day-to-6-month gap between live
    sources and the LSWT anchor. Python + xarray, similar shape to the
    Copernicus LSWT fetcher.
-7. **NOAA CoastWatch** — expand US coverage.
-8. **Lake polygons from HydroLAKES** — replaces the point marker with
-   a proper shape when zoomed in. New table `lake_geometries`, GeoJSON
-   per lake, served through a tiled PMTiles archive to keep bandwidth
-   sane.
-9. **Sub-hourly opt-in** for a small set of "flagship" lakes if user
+4. **NOAA CoastWatch** — expand US coverage.
+5. **Lake polygons from HydroLAKES / OSM** — replaces the point marker
+   with a proper shape when zoomed in. New table `lake_geometries`,
+   GeoJSON per lake, served through a tiled PMTiles archive to keep
+   bandwidth sane.
+6. **Sub-hourly opt-in** for a small set of "flagship" lakes if user
    demand warrants it.
 
 Each step ships as its own PR; each PR touches this file if it

@@ -11,8 +11,7 @@
     "seed:more": "tsx src/seed-more.ts",
     "seed:batch-2": "tsx src/seed-batch-2.ts",
     "seed:batch-3": "tsx src/seed-batch-3.ts",
-    "seed:batch-4-cz": "tsx src/seed-batch-4-cz.ts",
-    "dedupe-cz": "tsx src/dedupe-cz.ts"
+    "seed:batch-4-cz": "tsx src/seed-batch-4-cz.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",

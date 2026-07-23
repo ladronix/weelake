@@ -1,13 +1,29 @@
 /**
- * Weelake · Wikimedia Commons photo fetcher (backfill worker)
+ * Weelake · Wikimedia photo backfill (v2)
  *
- * For every lake with `wiki_url` set (or by name lookup), fetch the page's
- * primary image via the MediaWiki API and store its URL in `lakes.photo_url`.
+ * For every lake without a `photo_url`, try progressively looser
+ * lookups to find a good hero image:
  *
- * Free · no key required · CC-BY-SA licences (we credit in the footer).
+ *   1. If `wiki_url` is set → fetch that Wikipedia page's summary
+ *      image (originalimage → thumbnail).
+ *   2. Try the English Wikipedia page whose title matches the
+ *      lake's `name`.
+ *   3. If the lake has a `name_local` (typically the native
+ *      Czech / German / French / etc. form) → try the Wikipedia
+ *      in that language.
+ *   4. Try Wikimedia Commons full-text search with the English name
+ *      appended with 'lake'/'reservoir' hint.
+ *   5. Try Commons search with just the local name.
+ *   6. As a last resort, try Commons search with the country code
+ *      appended (helps disambiguate common lake names).
  *
- * Run:
- *   pnpm --filter openmeteo-refresh exec tsx src/photos-backfill.ts
+ * Every step is a single HTTP hit; six attempts × 65 unlinked
+ * lakes × 400ms breather = ~2.6 min worst case. Politeness
+ * (User-Agent + inter-request delay) keeps Wikimedia's rate
+ * limiter happy.
+ *
+ * Idempotent: if a lake gets a photo_url mid-run and the script is
+ * re-run, that lake is skipped.
  */
 import { createClient } from "@supabase/supabase-js";
 
@@ -29,58 +45,78 @@ interface Lake {
   country_code: string;
   wiki_url: string | null;
   photo_url: string | null;
+  type: string;
 }
 
 /** Extract the article title from a Wikipedia URL. */
-function articleTitleFromUrl(url: string): string | null {
+function articleTitleFromUrl(url: string): { lang: string; title: string } | null {
   try {
     const u = new URL(url);
-    // e.g. https://en.wikipedia.org/wiki/Lipno_Reservoir → "Lipno_Reservoir"
     const parts = u.pathname.split("/wiki/");
     if (parts.length !== 2) return null;
-    return decodeURIComponent(parts[1]);
+    const lang = u.hostname.match(/^([a-z]{2,3})\.wikipedia\.org$/)?.[1] ?? "en";
+    return { lang, title: decodeURIComponent(parts[1]) };
   } catch {
     return null;
   }
 }
 
-/**
- * Query the Wikipedia REST API for the "originalimage" of a page.
- * The English wiki has the best photo coverage for most world lakes.
- */
-async function fetchWikipediaImage(title: string): Promise<string | null> {
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+/** ISO-2 country code → preferred Wikipedia language. Not exhaustive but
+ *  covers our current lake set well. */
+function countryToWikiLang(cc: string): string {
+  const map: Record<string, string> = {
+    CZ: "cs", DE: "de", AT: "de", CH: "de", SK: "sk", PL: "pl",
+    HU: "hu", IT: "it", FR: "fr", ES: "es", PT: "pt", NL: "nl",
+    BE: "nl", SE: "sv", NO: "no", DK: "da", FI: "fi", IS: "is",
+    IE: "en", GB: "en", GR: "el", TR: "tr", RU: "ru", UA: "uk",
+    BY: "be", LT: "lt", LV: "lv", EE: "et", RO: "ro", BG: "bg",
+    HR: "hr", RS: "sr", SI: "sl", ME: "sr", MK: "mk", AL: "sq",
+    JP: "ja", CN: "zh", KP: "ko", KR: "ko", TH: "th", ID: "id",
+    PH: "en", IR: "fa", IL: "he",
+  };
+  return map[cc] ?? "en";
+}
+
+/** Wikipedia REST summary endpoint — best structured way to get an image. */
+async function wikipediaSummary(lang: string, title: string): Promise<string | null> {
+  const url = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
   try {
     const r = await fetch(url, {
-      headers: { "User-Agent": "V-Lake/1.0 (https://weelake.com; contact@weelake.com)" },
+      headers: { "User-Agent": "Weelake/1.0 (+https://weelake.com; hello@weelake.com)" },
     });
     if (!r.ok) return null;
-    const j = await r.json() as { originalimage?: { source?: string }; thumbnail?: { source?: string } };
-    return j.originalimage?.source ?? j.thumbnail?.source ?? null;
+    const j = (await r.json()) as { originalimage?: { source?: string }; thumbnail?: { source?: string } };
+    // Prefer originalimage (bigger, cropped by Wikipedia infobox convention)
+    // but sanity-check the URL because Wikipedia sometimes returns raw
+    // file paths whose extension isn't an image.
+    const raw = j.originalimage?.source ?? j.thumbnail?.source ?? null;
+    if (!raw) return null;
+    if (!/\.(jpe?g|png|webp|svg)(\?|$)/i.test(raw)) return null;
+    return raw;
   } catch {
     return null;
   }
 }
 
-/**
- * Fallback: search Wikimedia Commons for images tagged with the lake name.
- */
-async function fetchCommonsImage(query: string): Promise<string | null> {
+/** Wikimedia Commons full-text search restricted to file namespace. */
+async function commonsSearch(query: string): Promise<string | null> {
   const url =
     `https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*` +
-    `&generator=search&gsrsearch=${encodeURIComponent(query + " lake")}` +
+    `&generator=search&gsrsearch=${encodeURIComponent(query)}` +
     `&gsrlimit=1&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=800`;
   try {
     const r = await fetch(url, {
-      headers: { "User-Agent": "V-Lake/1.0" },
+      headers: { "User-Agent": "Weelake/1.0 (+https://weelake.com; hello@weelake.com)" },
     });
     if (!r.ok) return null;
-    const j = await r.json() as any;
+    const j = (await r.json()) as {
+      query?: { pages?: Record<string, { imageinfo?: Array<{ thumburl?: string; url?: string }> }> };
+    };
     const pages = j.query?.pages ?? {};
     for (const pid of Object.keys(pages)) {
       const info = pages[pid].imageinfo?.[0];
-      if (info?.thumburl) return info.thumburl as string;
-      if (info?.url) return info.url as string;
+      if (info?.thumburl) return info.thumburl;
+      if (info?.url) return info.url;
     }
     return null;
   } catch {
@@ -88,54 +124,81 @@ async function fetchCommonsImage(query: string): Promise<string | null> {
   }
 }
 
-async function findPhoto(lake: Lake): Promise<string | null> {
-  // 1. If wiki_url points at an article, extract title.
+async function findPhoto(lake: Lake): Promise<{ url: string; via: string } | null> {
+  // 1. Existing wiki_url — parse language + title.
   if (lake.wiki_url) {
-    const title = articleTitleFromUrl(lake.wiki_url);
-    if (title) {
-      const url = await fetchWikipediaImage(title);
-      if (url) return url;
+    const parsed = articleTitleFromUrl(lake.wiki_url);
+    if (parsed) {
+      const url = await wikipediaSummary(parsed.lang, parsed.title);
+      if (url) return { url, via: `wiki_url:${parsed.lang}` };
     }
   }
-  // 2. Try the English name directly.
+  // 2. English Wikipedia page matching the English name.
   {
-    const url = await fetchWikipediaImage(lake.name.replace(/ /g, "_"));
-    if (url) return url;
+    const url = await wikipediaSummary("en", lake.name.replace(/ /g, "_"));
+    if (url) return { url, via: "wiki_en" };
   }
-  // 3. Try Commons search.
-  const url = await fetchCommonsImage(lake.name);
-  return url;
+  // 3. Local Wikipedia language if we know it (Czech, German, ...).
+  const localLang = countryToWikiLang(lake.country_code);
+  if (localLang !== "en") {
+    const query = (lake.name_local ?? lake.name).replace(/ /g, "_");
+    const url = await wikipediaSummary(localLang, query);
+    if (url) return { url, via: `wiki_${localLang}` };
+  }
+  // 4. Commons full-text with type hint.
+  {
+    const typeHint = lake.type === "reservoir" ? "reservoir" : lake.type === "pond" ? "pond" : "lake";
+    const url = await commonsSearch(`${lake.name} ${typeHint}`);
+    if (url) return { url, via: "commons_en" };
+  }
+  // 5. Commons on the local name.
+  if (lake.name_local && lake.name_local !== lake.name) {
+    const url = await commonsSearch(lake.name_local);
+    if (url) return { url, via: "commons_local" };
+  }
+  // 6. Commons with country code.
+  {
+    const url = await commonsSearch(`${lake.name} ${lake.country_code}`);
+    if (url) return { url, via: "commons_country" };
+  }
+  return null;
 }
 
 async function main() {
   const { data, error } = await supabase
     .from("lakes")
-    .select("id, slug, name, name_local, country_code, wiki_url, photo_url");
+    .select("id, slug, name, name_local, country_code, wiki_url, photo_url, type");
   if (error) { console.error(error); process.exit(1); }
   const rows = (data ?? []) as Lake[];
-  console.log(`Backfilling photos for ${rows.length} lakes…`);
+  const missing = rows.filter((l) => !l.photo_url);
+  console.log(`Photos: ${rows.length - missing.length}/${rows.length} have photos, ${missing.length} to backfill.`);
 
-  let ok = 0, skipped = 0, fail = 0;
-  const CONC = 4;
-  for (let i = 0; i < rows.length; i += CONC) {
-    const chunk = rows.slice(i, i + CONC);
+  let ok = 0, fail = 0;
+  const CONC = 3; // gentler than the old script — 3 in-flight
+  for (let i = 0; i < missing.length; i += CONC) {
+    const chunk = missing.slice(i, i + CONC);
     const results = await Promise.all(chunk.map(async (l) => {
-      if (l.photo_url) return { l, url: l.photo_url, skipped: true };
-      const url = await findPhoto(l);
-      if (url) {
-        const { error: e } = await supabase.from("lakes").update({ photo_url: url }).eq("id", l.id);
-        if (e) return { l, url: null, err: e.message };
+      const found = await findPhoto(l);
+      if (found) {
+        const { error: e } = await supabase.from("lakes").update({ photo_url: found.url }).eq("id", l.id);
+        if (e) return { l, err: e.message };
+        return { l, found };
       }
-      return { l, url };
+      return { l };
     }));
-    results.forEach((r) => {
-      if (r.skipped) { skipped++; console.log(`  ⏭ ${r.l.slug.padEnd(24)} already has photo`); }
-      else if (r.url) { ok++; console.log(`  ✓ ${r.l.slug.padEnd(24)} ${r.url.slice(0, 80)}`); }
-      else { fail++; console.log(`  ✗ ${r.l.slug.padEnd(24)} no image found`); }
-    });
-    await new Promise((r) => setTimeout(r, 400));
+    for (const r of results) {
+      if (r.found) {
+        ok++;
+        console.log(`  OK ${r.l.slug.padEnd(24)} [${r.found.via.padEnd(14)}] ${r.found.url.slice(0, 80)}`);
+      } else {
+        fail++;
+        console.log(`  X  ${r.l.slug.padEnd(24)} no image found`);
+      }
+    }
+    // Rate-limit breather so Wikimedia doesn't 429 us on the burst.
+    await new Promise((r) => setTimeout(r, 800));
   }
-  console.log(`Done. ok=${ok} skipped=${skipped} fail=${fail} total=${rows.length}`);
+  console.log(`Done. ok=${ok} fail=${fail} total_missing=${missing.length}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

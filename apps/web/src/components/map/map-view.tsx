@@ -274,6 +274,12 @@ export function MapView() {
   const filteredRef = useRef<LakeMarker[]>([]);
   useEffect(() => { filteredRef.current = filtered; }, [filtered]);
 
+  // Lake polygon FeatureCollection — fetched once from
+  // /api/lakes/polygons and pushed into the 'lake-polygons' source.
+  // Held in a ref so a basemap swap (which re-runs installLayers)
+  // can re-seed the source without re-fetching.
+  const polygonDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
+
   // Remember the camera position from just BEFORE the user zoomed into
   // a selected lake, so we can smoothly fly back when the sheet closes.
   // A ref (not state) — no rerenders needed, and we clear it as soon
@@ -377,6 +383,27 @@ export function MapView() {
     map.setStyle(style as never, { diff: false, transformStyle } as never);
   }, [basemap]);
 
+  // Fetch lake polygons once on mount. Cached at edge with
+  // s-maxage=86400 so this is essentially free on a warm CDN. We
+  // push the fetched FeatureCollection into 'lake-polygons' as
+  // soon as installLayers has created the source; if it hasn't
+  // yet, the seed inside installLayers picks up polygonDataRef.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/lakes/polygons")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: GeoJSON.FeatureCollection | null) => {
+        if (cancelled || !data) return;
+        polygonDataRef.current = data;
+        const map = mapRef.current;
+        if (!map) return;
+        const src = map.getSource("lake-polygons") as maplibregl.GeoJSONSource | undefined;
+        if (src) src.setData(data);
+      })
+      .catch(() => { /* polygons are decoration; a failure is fine */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // --------------------------------------------------------------------
   // Add / update the lake layers.
   //
@@ -450,6 +477,44 @@ export function MapView() {
           tempSum: ["+", ["get", "temp"]],
           tempCount: ["+", 1],
           maxImportance: ["max", ["get", "importance"]],
+        },
+      });
+
+      // Lake polygons — shown at zoom >= 6, fetched from
+      // /api/lakes/polygons which returns a single FeatureCollection
+      // of every lake's simplified shape. Renders BELOW everything
+      // else so the temperature pill + heatmap stay on top.
+      addSourceOnce("lake-polygons", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      addLayerOnce({
+        id: "lake-polygon-fill",
+        type: "fill",
+        source: "lake-polygons",
+        minzoom: 6,
+        paint: {
+          // Water-tinted semi-transparent fill. Blends onto every
+          // basemap without overwhelming the temperature pill above.
+          "fill-color": "#0ea5e9",
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"],
+            6, 0,     // fade in
+            7, 0.15,
+            10, 0.28,
+          ],
+        },
+      });
+
+      addLayerOnce({
+        id: "lake-polygon-outline",
+        type: "line",
+        source: "lake-polygons",
+        minzoom: 6,
+        paint: {
+          "line-color": "#0369a1",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 12, 1.8],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 0.6, 12, 0.9],
         },
       });
 
@@ -661,6 +726,13 @@ export function MapView() {
             },
           }));
         src.setData({ type: "FeatureCollection", features });
+      }
+
+      // Seed the polygons source with cached data if we already
+      // fetched it (survives style swaps via polygonDataRef).
+      const polySrc = map.getSource("lake-polygons") as maplibregl.GeoJSONSource | undefined;
+      if (polySrc && polygonDataRef.current) {
+        polySrc.setData(polygonDataRef.current);
       }
     };
 
