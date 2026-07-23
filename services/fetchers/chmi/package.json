@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/refresh.ts"
+    "start": "tsx src/refresh.ts",
+    "scan": "tsx src/scan.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

@@ -1,25 +1,27 @@
-name: Fetch · ChMI (daily)
+name: Fetch · Open-Meteo (daily)
 
-# Note: currently ships an EMPTY station list (see
-# services/fetchers/chmi/data/stations.ts for the reasoning). The
-# workflow is kept alive as infrastructure — the shared fetcher-lib
-# is exercised by a second consumer and re-enabling this later is
-# just editing stations.ts.
+# Open-Meteo Forecast + Marine — the LIVE data source that powers
+# the map's `lakes_current` view. See docs/DATA-SOURCES.md.
+#
+# Cadence: daily at 03:00 UTC (before European morning traffic).
+# On failure: GitHub emails the repo admins by default (unless
+# they've turned off workflow-failure notifications in their user
+# settings), so we don't wire a bespoke alert channel.
 
 on:
   schedule:
-    - cron: "15 3 * * *"    # 15 minutes after Open-Meteo, to spread Supabase load
+    - cron: "0 3 * * *"
   workflow_dispatch: {}
 
 concurrency:
-  group: fetch-chmi
+  group: fetch-openmeteo
   cancel-in-progress: false
 
 jobs:
   fetch:
-    name: Refresh ChMI in-situ readings
+    name: Refresh Open-Meteo temperatures
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       NEXT_PUBLIC_SUPABASE_URL:   ${{ secrets.SUPABASE_URL }}
       SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
@@ -35,35 +37,51 @@ jobs:
 
       - name: Verify secrets present
         run: |
-          test -n "$SUPABASE_URL"              || (echo "::error::SUPABASE_URL missing"              && exit 1)
-          test -n "$SUPABASE_SERVICE_ROLE_KEY" || (echo "::error::SUPABASE_SERVICE_ROLE_KEY missing" && exit 1)
+          test -n "$SUPABASE_URL"              || (echo "::error::SUPABASE_URL secret missing" && exit 1)
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || (echo "::error::SUPABASE_SERVICE_ROLE_KEY secret missing" && exit 1)
 
       - run: pnpm install --no-frozen-lockfile
 
-      - name: Refresh
+      - name: Refresh temperatures
+        id: fetch
         run: |
           set -o pipefail
-          pnpm --filter @weelake/fetcher-chmi start 2>&1 | tee /tmp/fetch.log
+          # Tee to a file so the summary step can post-process the
+          # structured JSON log lines without a second run.
+          pnpm --filter @weelake/fetcher-openmeteo start 2>&1 | tee /tmp/fetch.log
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "## ChMI · daily refresh"
+            echo "## Open-Meteo · daily refresh"
             echo ""
             echo "Finished at $(date -u +%FT%TZ)"
             echo ""
+            # Extract the last run.finish JSON row and pretty-print it.
             RUN=$(grep -o '{"[^}]*"event":"run.finish"[^}]*}' /tmp/fetch.log | tail -1 || true)
             if [ -n "$RUN" ]; then
               echo '```json'
               echo "$RUN" | python3 -m json.tool
               echo '```'
               echo ""
+              # Pull the counts and duration for a headline.
               OK=$(echo "$RUN"    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("ok", 0))')
               FAIL=$(echo "$RUN"  | python3 -c 'import sys,json; print(json.load(sys.stdin).get("fail", 0))')
               SKIP=$(echo "$RUN"  | python3 -c 'import sys,json; print(json.load(sys.stdin).get("skip", 0))')
               DURMS=$(echo "$RUN" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("duration_ms", 0))')
               STATUS=$(echo "$RUN"| python3 -c 'import sys,json; print(json.load(sys.stdin).get("status", "?"))')
               echo "**Result:** \`status=$STATUS\` · ok=$OK · fail=$FAIL · skip=$SKIP · duration=${DURMS}ms"
+              echo ""
+              # Show the last 10 lake.fail lines so a partial run is diagnosable.
+              FAILS=$(grep '"event":"lake.fail"' /tmp/fetch.log | tail -10 || true)
+              if [ -n "$FAILS" ]; then
+                echo "### Recent failures (last 10)"
+                echo '```'
+                echo "$FAILS"
+                echo '```'
+              fi
+            else
+              echo "_(no run.finish line found — the fetcher may have crashed before recording a run)_"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
